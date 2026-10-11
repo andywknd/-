@@ -546,11 +546,12 @@ function startLeak(x, y) {
 function evacuate(cause) {
   paused = true;
   const lost = [], kept = [], uniq = [];
-  S.cargo.forEach(it => (it.t >= 5 ? uniq : (!S.shop.insurance && Math.random() < .5 ? lost : kept)).push(it));
+  const soft = S.built < 2;   // на первых двух участках добыча при эвакуации не теряется
+  S.cargo.forEach(it => (it.t >= 5 ? uniq : (!S.shop.insurance && !soft && Math.random() < .5 ? lost : kept)).push(it));
   const showCause = { fuel: 'Out of fuel', hull: 'Machine destroyed', leak: 'Didn\'t switch on the pump in time' }[cause] || 'Crash';
   modal(`<h2>🚨 ${showCause}</h2>
     <p>The crew is towing the machine to station ${S.lastBase === 0 ? '«Chukotka»' : '№' + S.lastBase}.</p>
-    <p>${S.shop.insurance ? '• 📄 "Drill Shield" insurance: all loot is kept.' : '• About half of the regular loot is lost (<b>' + lost.length + '</b> of ' + (lost.length + kept.length) + ').'}<br>
+    <p>${soft && !S.shop.insurance ? '• On the first sections the crew saves all your loot. Later — only half, so watch your fuel!' : S.shop.insurance ? '• 📄 "Drill Shield" insurance: all loot is kept.' : '• About half of the regular loot is lost (<b>' + lost.length + '</b> of ' + (lost.length + kept.length) + ').'}<br>
     ${uniq.length ? `• Unique finds (${uniq.length}) stay in an emergency container at the crash site.<br>` : ''}
     • Tunnel, upgrades, coins and collection are kept.<br>• Basic repairs and fuel are free.</p>`,
     [{ t: 'Evacuate', cls: 'btn', fn: () => {
@@ -1211,7 +1212,9 @@ let hudT = 0, hudCoins = -1;
 function hud(dt) {
   hudT -= dt; if (hudT > 0) return; hudT = .1;
   const need = fuelNeed();
-  const fuelLow = atBase < 0 && S.fuel < need * 1.25 + 2;
+  const early = S.built < 2;   // на первых участках предупреждаем о топливе раньше
+  const fuelLow = atBase < 0 && S.fuel < need * (early ? 1.7 : 1.25) + (early ? 6 : 2);
+  if (fuelLow && early && run && !run.fuelWarned) { run.fuelWarned = true; say('petrovich', 'Fuel is running out! Turn left back to base — or you\'ll need an evacuation.', true); haptic('warning'); }
   setBar('b-fuel', S.fuel, tankMax(), Math.max(0, Math.round(S.fuel)) + '', fuelLow, S.fuel < tankMax() * .1 && atBase < 0);
   setBar('b-heat', S.heat, 100, Math.round(S.heat) + '°', S.heat > 60, S.heat > 85);
   setBar('b-hull', S.hull, hullMax(), Math.max(0, Math.round(S.hull)) + '', S.hull < hullMax() * .4, S.hull < hullMax() * .2);

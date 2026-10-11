@@ -74,4 +74,6 @@ EXTRA = {
     'Платиновый бур выдаётся за прохождение кампании': 'The platinum drill is awarded for finishing the campaign',
     'за финал': 'for the finale',
     'Позже': 'Later',
+    '• На первых участках бригада спасает всю добычу. Дальше — только половину, следи за топливом!': '• On the first sections the crew saves all your loot. Later — only half, so watch your fuel!',
+    'Топлива впритык! Разворачивайся влево к базе — иначе придётся эвакуировать.': "Fuel is running out! Turn left back to base — or you'll need an evacuation.",
 }

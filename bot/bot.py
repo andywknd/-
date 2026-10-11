@@ -1022,10 +1022,88 @@ async def admin_help(m: Message):
     await m.answer(
         "🛠 Команды админа:\n"
         "/stats — полная статистика\n/export — все игроки в CSV\n"
-        "/broadcast — рассылка по игрокам\n/stopbroadcast — остановить рассылку\n"
+        "/broadcast — рассылка по игрокам\n/remind — напомнить тем, кто не открыл игру\n/stopbroadcast — остановить рассылку\n"
         "/preview — показать пост для канала\n/post @канал — опубликовать пост\n"
         "/links — ссылки на оплату для лавки\n/refund id charge — вернуть звёзды\n"
         "/health — проверка сервера\n/errors — ошибки в игре и сообщения игроков")
+
+
+# ---------- Напоминание тем, кто нажал START, но так и не открыл игру ----------
+REMIND_RU = ("⛏ <b>Твоя буровая заправлена и ждёт!</b>\n\n"
+             "Пока все обсуждают тоннель до Америки, {players} игроков уже копают от Чукотки к Аляске, а {done} — докопались.\n\n"
+             "Первый участок — пара минут. Жми «Копать» 👇")
+REMIND_EN = ("⛏ <b>Your drilling rig is fueled up and waiting!</b>\n\n"
+             "While everyone is talking about a tunnel to America, {players} players are already digging from Chukotka to Alaska, and {done} have made it.\n\n"
+             "The first section takes a couple of minutes. Tap «Dig» 👇")
+
+
+def remind_ids():
+    # повторно одному и тому же не напоминаем
+    return db.execute("SELECT uid, lang FROM players WHERE started=1 AND blocked=0 AND sessions=0 "
+                      "AND uid NOT IN (SELECT uid FROM events WHERE ev='remind_sent')").fetchall()
+
+
+def remind_text(lang: str) -> str:
+    players = q1("SELECT COUNT(*) FROM players WHERE sessions>0")
+    done = q1("SELECT COUNT(*) FROM players WHERE done>0")
+    en = bool(lang) and not lang.lower().startswith(RU_LANGS)
+    return (REMIND_EN if en else REMIND_RU).format(players=players, done=done)
+
+
+@dp.message(Command("remind"), is_admin)
+async def remind_cmd(m: Message):
+    flush()
+    if BC_RUNNING["on"]:
+        await m.answer("Сейчас идёт рассылка. Остановить: /stopbroadcast")
+        return
+    ids = remind_ids()
+    await send_safe(lambda: m.answer_photo(promo_photo(), caption=remind_text("ru"), parse_mode="HTML", reply_markup=play_kb_private()))
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"✅ Отправить {len(ids)} игрокам", callback_data="rm:go")],
+                                               [InlineKeyboardButton(text="❌ Отмена", callback_data="rm:no")]])
+    await m.answer(f"☝️ Так увидят напоминание те, кто нажал START, но <b>ни разу не открыл игру</b>: <b>{len(ids)}</b> чел.\n"
+                   f"(англоязычным уйдёт версия на английском)", parse_mode="HTML", reply_markup=kb)
+
+
+@dp.callback_query(F.data.startswith("rm:"), is_admin)
+async def remind_cb(c: CallbackQuery):
+    if c.data == "rm:no":
+        await c.message.edit_text("Напоминание отменено.")
+    elif not BC_RUNNING["on"]:
+        await c.message.edit_text("🚀 Напоминание отправляется… Остановить: /stopbroadcast")
+        asyncio.create_task(remind_run(c.message.chat.id))
+    await c.answer()
+
+
+async def remind_run(admin_chat: int):
+    BC_RUNNING.update(on=True, stop=False)
+    flush()
+    rows = remind_ids()
+    ok = blocked = fail = 0
+    for uid, lang in rows:
+        if BC_RUNNING["stop"]:
+            break
+        en = bool(lang) and not lang.lower().startswith(RU_LANGS)
+        for _ in range(3):
+            try:
+                res = await bot.send_photo(uid, promo_photo(), caption=remind_text(lang or ""), parse_mode="HTML", reply_markup=play_kb_private(en))
+                global promo_file_id
+                if not promo_file_id and res and res.photo:
+                    promo_file_id = res.photo[-1].file_id   # дальше шлём по file_id, без повторной загрузки
+                ok += 1
+                add_event(uid, "remind_sent")
+                break
+            except TelegramRetryAfter as e:
+                await asyncio.sleep(e.retry_after + 1)
+            except TelegramForbiddenError:
+                blocked += 1
+                db.execute("UPDATE players SET blocked=1 WHERE uid=?", (uid,))
+                break
+            except Exception:
+                fail += 1
+                break
+        await asyncio.sleep(0.05)
+    BC_RUNNING["on"] = False
+    await bot.send_message(admin_chat, f"✅ Напоминание: доставлено {ok}, заблокировали бота {blocked}, ошибок {fail} (из {len(rows)})")
 
 
 @dp.message(Command("health"), is_admin)

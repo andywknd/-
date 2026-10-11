@@ -57,7 +57,7 @@ window.CFG = {
   // ветки улучшений: значения по ступеням 1..5
   UPGRADES: {
     drill:   { name: 'Drill', desc: 'Digs faster and breaks through hard rock', vals: [1.6, 2.2, 3.0, 4.0, 5.2], fmt: v => v.toFixed(1) + '/s' },
-    tank:    { name: 'Tank', desc: 'More fuel — dig longer without going back to base', vals: [40, 60, 85, 115, 150], fmt: v => v + ' L' },
+    tank:    { name: 'Tank', desc: 'More fuel — dig longer without going back to base', vals: [55, 70, 90, 120, 155], fmt: v => v + ' L' },
     cooling: { name: 'Cooling', desc: 'Drill heats up less — dig without stopping', vals: [9, 12, 16, 21, 27], fmt: v => v + '°/s' },
     hull:    { name: 'Hull', desc: 'Sturdier machine — fewer crashes', vals: [40, 60, 85, 115, 150], fmt: v => v + ' pts' },
     cargo:   { name: 'Cargo', desc: 'More loot per trip', vals: [6, 9, 13, 18, 25], fmt: v => v + ' slots' },
