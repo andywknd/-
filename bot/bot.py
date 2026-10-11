@@ -86,6 +86,19 @@ CREATE INDEX IF NOT EXISTS ev_ev ON events(ev);
 CREATE INDEX IF NOT EXISTS pl_last ON players(last);
 CREATE TABLE IF NOT EXISTS purchases(charge TEXT PRIMARY KEY, uid INTEGER, item TEXT, stars INTEGER, t REAL, refunded INTEGER DEFAULT 0);
 """)
+# миграция: в базах первой версии у events нет колонки d, а в players могут не хватать полей
+def _ensure_cols(table, cols):
+    have = {r[1] for r in db.execute(f"PRAGMA table_info({table})")}
+    for name, decl in cols:
+        if name not in have:
+            db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+            log.warning("migrated: %s.%s added", table, name)
+
+
+_ensure_cols("events", [("d", "TEXT")])
+_ensure_cols("players", [(c, "TEXT") for c in ("name", "username", "lang")] + [("ref", "TEXT DEFAULT ''")] +
+             [(c, "INTEGER DEFAULT 0") for c in ("premium", "started", "can_write", "blocked", "sessions", "built", "diamonds",
+                                                 "coins", "play", "done", "buys", "shares", "tut")] + [("first", "REAL"), ("last", "REAL")])
 # перенос из старой таблицы users (первая версия бота)
 try:
     db.execute("INSERT OR IGNORE INTO players(uid, first, last, ref, started) SELECT id, first, first, ref, 1 FROM users")
