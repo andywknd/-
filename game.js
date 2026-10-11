@@ -291,7 +291,7 @@ const cv = $('game'), cx = cv.getContext('2d');
 const light = document.createElement('canvas'), lx = light.getContext('2d');
 let VW = 0, VH = 0, DPR = 1, TS = 40, tiles = {};
 function resize() {
-  DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
   VW = window.innerWidth; VH = window.innerHeight;
   cv.width = VW * DPR; cv.height = VH * DPR;
   light.width = Math.ceil(VW / 2); light.height = Math.ceil(VH / 2);
@@ -342,22 +342,35 @@ window.addEventListener('keydown', e => { if (KEYMAP[e.code]) { keys[KEYMAP[e.co
 window.addEventListener('keyup', e => { if (KEYMAP[e.code]) keys[KEYMAP[e.code]] = 0; });
 const jz = $('joyzone'), joy = $('joy'), knob = $('knob');
 function hideHint() { $('tapHint').classList.add('hidden'); if (S && !S.tut.moved) { S.tut.moved = true; dirty = true; } }
+// Управление: (1) зажми палец рядом с буровой — она едет в ту сторону; (2) или веди пальцем как джойстиком.
+let joyMode = 'point', fingerX = 0, fingerY = 0;
 jz.addEventListener('pointerdown', e => {
   audio(); hideHint(); if (joyId !== null) return; joyId = e.pointerId; joyO = { x: e.clientX, y: e.clientY };
-  joy.style.left = e.clientX + 'px'; joy.style.top = (e.clientY - jz.getBoundingClientRect().top) + 'px';
-  joy.classList.remove('hidden'); knob.style.transform = ''; $('joyhint').classList.add('hidden');
+  fingerX = e.clientX; fingerY = e.clientY; joyMode = 'point'; joyDir = null;
+  joy.style.left = e.clientX + 'px'; joy.style.top = e.clientY + 'px'; knob.style.transform = '';
   try { jz.setPointerCapture(e.pointerId); } catch (er) {}
+  e.preventDefault();
 });
 jz.addEventListener('pointermove', e => {
   if (e.pointerId !== joyId) return;
+  fingerX = e.clientX; fingerY = e.clientY;
   let dx = e.clientX - joyO.x, dy = e.clientY - joyO.y; const L = Math.hypot(dx, dy);
+  if (joyMode === 'point' && L > 22) { joyMode = 'joy'; joy.classList.remove('hidden'); }
+  if (joyMode !== 'joy') return;
   const m = Math.min(L, 44); const kx = L ? dx / L * m : 0, ky = L ? dy / L * m : 0;
   knob.style.transform = `translate(${kx}px,${ky}px)`;
   if (L < 14) joyDir = null; else joyDir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'r' : 'l') : (dy > 0 ? 'd' : 'u');
 });
-const joyEnd = e => { if (e.pointerId !== joyId) return; joyId = null; joyDir = null; joy.classList.add('hidden'); };
-jz.addEventListener('pointerup', joyEnd); jz.addEventListener('pointercancel', joyEnd);
-const inputDir = () => joyDir || (keys.r ? 'r' : keys.l ? 'l' : keys.u ? 'u' : keys.d ? 'd' : null);
+const joyEnd = e => { if (e.pointerId !== joyId) return; joyId = null; joyDir = null; joyMode = 'point'; joy.classList.add('hidden'); };
+jz.addEventListener('pointerup', joyEnd); jz.addEventListener('pointercancel', joyEnd); jz.addEventListener('lostpointercapture', joyEnd);
+function pointDir() {
+  // направление от буровой к пальцу
+  const mx = M.rx * TS - camX + TS / 2, my = M.ry * TS - camY + TS / 2;
+  const dx = fingerX - mx, dy = fingerY - my;
+  if (Math.abs(dx) < TS * .6 && Math.abs(dy) < TS * .6) return null;
+  return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'r' : 'l') : (dy > 0 ? 'd' : 'u');
+}
+const inputDir = () => (joyId !== null ? (joyMode === 'joy' ? joyDir : pointDir()) : null) || (keys.r ? 'r' : keys.l ? 'l' : keys.u ? 'u' : keys.d ? 'd' : null);
 const DIRS = { r: [1, 0], l: [-1, 0], u: [0, -1], d: [0, 1] };
 
 // ---------- Машина ----------
@@ -560,7 +573,6 @@ $('oreTip').addEventListener('pointerdown', hideOreTip);
 let oreTipShownAt = 0;
 // любое касание экрана (тап, свайп в любую сторону) убирает подсказки, если их уже успели увидеть
 document.addEventListener('pointerdown', e => {
-  if (!$('tapHint').classList.contains('hidden')) hideHint();
   if (oreTipT > 0 && performance.now() - oreTipShownAt > 1200) hideOreTip();
 }, true);
 // ---------- Обновление ----------
@@ -1377,10 +1389,10 @@ function showGame() {
 }
 $('playBtn').addEventListener('click', () => {
   audio(); showGame(); paused = false;
-  if (!S.tut.moved) $('tapHint').classList.remove('hidden');
   setTimeout(() => checkRefs(true), 4000);
-  if (!S.tut.intro) { S.tut.intro = true; track('tutorial_start'); S.chIntro = 0; banner('ГЛАВА 1', C.CHAPTERS_DATA[0].title); setTimeout(() => dialog(C.CHAPTERS_DATA[0].intro), 1200); }
-  else if (S.chIntro < S.built && S.built < NCH) chapterIntro();
+  const showHint = () => { if (!S.tut.moved) $('tapHint').classList.remove('hidden'); };
+  if (!S.tut.intro) { S.tut.intro = true; track('tutorial_start'); S.chIntro = 0; banner('ГЛАВА 1', C.CHAPTERS_DATA[0].title); setTimeout(() => dialog(C.CHAPTERS_DATA[0].intro, showHint), 1200); }
+  else { showHint(); if (S.chIntro < S.built && S.built < NCH) chapterIntro(); }
 });
 $('collBtnT').addEventListener('click', () => { openCollection(); });
 $('brand').addEventListener('click', e => { if (inTG && tg.openTelegramLink) { e.preventDefault(); try { tg.openTelegramLink('https://t.me/moscowmap'); } catch (er) { location.href = 'https://t.me/moscowmap'; } } track('brand_click'); });
@@ -1409,7 +1421,12 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
-document.addEventListener('visibilitychange', () => { if (document.hidden) { save(true); track('hide'); sendEvents(true); if (S && $('sheet').classList.contains('hidden') && $('dialog').classList.contains('hidden') && $('modal').classList.contains('hidden') && $('title').classList.contains('hidden')) { paused = true; modal('<h2>⏸ Пауза</h2><p>Бур ждёт.</p>', [{ t: 'Продолжить', cls: 'btn' }]); } } });
+// Свернули приложение — тихая пауза; вернулись — игра продолжается сама (без всплывающих окон)
+let autoPaused = false;
+function onHide() { save(true); track('hide'); sendEvents(true); if (S && !paused) { paused = true; autoPaused = true; } joyId = null; joyDir = null; for (const k in keys) keys[k] = 0; }
+function onShow() { if (autoPaused) { autoPaused = false; const uiOpen = !$('sheet').classList.contains('hidden') || !$('dialog').classList.contains('hidden') || !$('modal').classList.contains('hidden') || !$('title').classList.contains('hidden'); if (!uiOpen) paused = false; } lastT = performance.now(); }
+document.addEventListener('visibilitychange', () => { if (document.hidden) onHide(); else onShow(); });
+if (inTG && tg.onEvent) { try { tg.onEvent('deactivated', onHide); tg.onEvent('activated', onShow); } catch (e) {} }
 window.addEventListener('pagehide', () => save(true));
 window.addEventListener('resize', resize);
 
