@@ -99,7 +99,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .goal .gnext b{color:#ffcf4a}
 .goal .bonus{text-align:center;font-size:12px;color:#9db4c2;margin-top:8px}
 .btn.big{font-size:18px;padding:15px}
-.route .rl{display:flex;justify-content:space-between;font-size:12px;color:#9db4c2;margin-bottom:6px}
+.route .rl{display:flex;justify-content:space-between;font-size:12px;color:#9db4c2;margin-bottom:20px}
 .route .rl b{color:#fff;font-size:14px}
 .route .rbar{position:relative;height:14px;border-radius:7px;background:#0e1c25;margin:0 8px}
 .route .rfill{position:absolute;left:0;top:0;bottom:0;border-radius:7px;background:linear-gradient(90deg,#2fbf6a,#ffcf4a)}
@@ -345,6 +345,23 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .btn .mi{height:26px;width:auto;vertical-align:middle;margin:-6px 8px -4px 0;filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))}
 .langsw{display:flex;gap:6px}
 .sheet.ontop{z-index:36}
+/* Сокровище собрано */
+#trfx{position:fixed;inset:0;z-index:39;pointer-events:none;overflow:hidden;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 45%,rgba(40,24,4,.55),rgba(3,8,12,.85))}
+#trfx .rays{position:absolute;left:50%;top:45%;width:220vmax;height:220vmax;margin:-110vmax 0 0 -110vmax;background:repeating-conic-gradient(rgba(255,214,90,.28) 0 9deg,rgba(255,214,90,0) 9deg 18deg);opacity:0}
+#trfx .glow{position:absolute;left:50%;top:45%;width:340px;height:340px;margin:-170px 0 0 -170px;border-radius:50%;background:radial-gradient(circle,rgba(255,230,140,.9),rgba(255,180,40,.35) 45%,rgba(255,180,40,0) 70%);opacity:0}
+#trfx .trimg{position:relative;width:170px;height:170px;object-fit:contain;margin-top:-10vh;filter:drop-shadow(0 0 24px rgba(255,220,120,.9));opacity:0}
+#trfx .conf i{position:absolute;top:-20px;width:9px;height:14px;border-radius:2px;opacity:0}
+#trfx .conf .fw{position:absolute;width:110px;height:110px;margin:-55px 0 0 -55px;opacity:0}
+#trfx.go .rays{animation:trr 2.8s linear forwards}
+#trfx.go .glow{animation:trg 2.8s ease-out forwards}
+#trfx.go .trimg{animation:tri 2.8s cubic-bezier(.2,1.6,.4,1) forwards}
+#trfx.go .conf i{animation-name:trc;animation-timing-function:ease-in;animation-fill-mode:forwards}
+#trfx.go .conf .fw{animation:trf 1s ease-out forwards}
+@keyframes trr{0%{opacity:0;transform:rotate(0)}15%{opacity:1}85%{opacity:1}100%{opacity:0;transform:rotate(60deg)}}
+@keyframes trg{0%{opacity:0;transform:scale(.3)}25%{opacity:1;transform:scale(1.1)}100%{opacity:.6;transform:scale(1)}}
+@keyframes tri{0%{opacity:0;transform:scale(.1) rotate(-30deg)}30%{opacity:1;transform:scale(1.25) rotate(8deg)}55%{transform:scale(1) rotate(0)}85%{opacity:1;transform:scale(1.05)}100%{opacity:0;transform:scale(1.4)}}
+@keyframes trc{0%{opacity:1;transform:translateY(0) rotate(0)}100%{opacity:.9;transform:translateY(110vh) rotate(720deg)}}
+@keyframes trf{0%{opacity:0;transform:scale(.2)}40%{opacity:1;transform:scale(1.1)}100%{opacity:0;transform:scale(1.3)}}
 </style>
 </head>
 <body>
@@ -387,6 +404,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 <div id="upNow" class="hidden"></div>
 <div id="oreTip" class="off"><div class="ud"><span class="a">⬆️</span><span>💎</span><span>🟡</span><span class="b">⬇️</span></div><div class="t"><b>Бонус: вверху и внизу — сокровища!</b>Главное — копай вправо до Аляски. А если свернёшь вверх или вниз, найдёшь руду и алмазы: на базе они сами станут монетами.<span class="flow">💎 → 🪙 → ⛏ бур мощнее</span></div></div>
 <div id="toast" class="off"></div>
+<div id="trfx" class="hidden"><div class="rays"></div><div class="glow"></div><img class="trimg" alt=""><div class="conf"></div></div>
 <div id="flood" class="hidden"><div class="w"></div><div class="bubbles"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="ft">ЗАТОПИЛО!</div></div>
 
 <!-- Титульный экран -->
@@ -412,7 +430,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 <div id="dialog" class="hidden"><div class="dl"><img alt=""><div class="bub"><small></small><span></span><i class="tap">нажми, чтобы продолжить ›</i></div></div></div>
 <div id="finale" class="screen hidden" style="background:#0b1620"><canvas id="finc"></canvas><div class="body" id="finBody" style="padding:12px 14px calc(var(--sab) + 16px);overflow:auto;flex:1;touch-action:pan-y"></div></div>
 
-<script>window.GAME_V = 24;</script>
+<script>window.GAME_V = 25;</script>
 <script>
 /* Язык: выбранный в настройках, иначе язык Telegram (русский для RU/СНГ, английский для остальных) */
 (function () {

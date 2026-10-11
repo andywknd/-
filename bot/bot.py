@@ -87,6 +87,8 @@ CREATE TABLE IF NOT EXISTS events(t REAL, uid INTEGER, ev TEXT, d TEXT);
 CREATE INDEX IF NOT EXISTS ev_t ON events(t);
 CREATE INDEX IF NOT EXISTS ev_ev ON events(ev);
 CREATE INDEX IF NOT EXISTS pl_last ON players(last);
+CREATE TABLE IF NOT EXISTS segtimes(seg INTEGER, uid INTEGER, t REAL, PRIMARY KEY(seg, uid));
+CREATE INDEX IF NOT EXISTS seg_t ON segtimes(seg, t);
 CREATE TABLE IF NOT EXISTS purchases(charge TEXT PRIMARY KEY, uid INTEGER, item TEXT, stars INTEGER, t REAL, refunded INTEGER DEFAULT 0);
 """)
 # миграция: в базах первой версии у events нет колонки d, а в players могут не хватать полей
@@ -284,6 +286,36 @@ async def api_me(req: web.Request):
     return cors(web.json_response({"refs": n}))
 
 
+LAST_SEG: dict[int, float] = {}
+
+
+async def api_seg(req: web.Request):
+    """Игрок прошёл участок: сохраняем лучшее время и отвечаем, быстрее скольких процентов игроков."""
+    if req.method == "OPTIONS":
+        return cors(web.Response(status=204))
+    try:
+        body = json.loads(await req.text())
+        n, t = int(body.get("n")), float(body.get("t"))
+    except Exception:
+        return cors(web.Response(status=400))
+    user = check_init(body.get("init", ""))
+    if not user:
+        return cors(web.Response(status=403))
+    if not (0 <= n < 20 and 5 <= t <= 86400):
+        return cors(web.Response(status=400))
+    uid = int(user["id"])
+    now = time.time()
+    if now - LAST_SEG.get(uid, 0) < 3:
+        return cors(web.Response(status=429))
+    LAST_SEG[uid] = now
+    db.execute("INSERT INTO segtimes(seg, uid, t) VALUES(?,?,?) ON CONFLICT(seg, uid) DO UPDATE SET t=MIN(t, excluded.t)", (n, uid, t))
+    total = db.execute("SELECT COUNT(*) FROM segtimes WHERE seg=? AND uid!=?", (n, uid)).fetchone()[0]
+    slower = db.execute("SELECT COUNT(*) FROM segtimes WHERE seg=? AND uid!=? AND t>?", (n, uid, t)).fetchone()[0]
+    med = db.execute("SELECT t FROM segtimes WHERE seg=? ORDER BY t LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM segtimes WHERE seg=?)", (n, n)).fetchone()
+    faster = round(100 * slower / total) if total else 100
+    return cors(web.json_response({"faster": faster, "total": total, "med": round(med[0]) if med else round(t)}))
+
+
 async def api_health(req):
     return web.json_response({"ok": True, "buffer": len(EV_BUF)})
 
@@ -293,6 +325,7 @@ async def start_api():
     app.router.add_route("*", "/api/e", api_events)
     app.router.add_get("/api/health", api_health)
     app.router.add_route("*", "/api/me", api_me)
+    app.router.add_route("*", "/api/seg", api_seg)
     runner = web.AppRunner(app, access_log=None)
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", API_PORT, backlog=2048).start()

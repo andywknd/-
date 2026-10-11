@@ -144,7 +144,7 @@ const defaultState = () => ({
   stats: { diamonds: 0, accidents: 0, sorties: 0, delivered: 0, earned: 0, playTime: 0, distract: 0, started: Date.now(), finishedAt: 0, maxDepth: 0, segEvac: 0 },
   set: { sound: true, jokes: true, vibro: true, calm: false },
   tut: { intro: false, firstOre: false, back: false, returned: false, scan: false, upgr: false },
-  proto: false, done: false, t: 0, chIntro: -1, completions: 0, shop: {}, turboUntil: 0, buys: 0, refs: { n: 0, tokens: 0, big: false }, tr: { t: 0, got: [] },
+  proto: false, done: false, t: 0, chIntro: -1, completions: 0, shop: {}, turboUntil: 0, buys: 0, refs: { n: 0, tokens: 0, big: false }, tr: { t: 0, got: [] }, segT0: 0,
 });
 
 const upv = k => C.UPGRADES[k].vals[S.up[k] - 1];
@@ -646,7 +646,21 @@ function trCheck() {
   else if (S.tr.got.length === 1) say('alya', `Первый ${T.piece}! Осталось ${TR_N - 1}. Стрелка у буровой покажет следующий.`, true);
   else if (S.tr.got.length === TR_N - 1) say('petrovich', 'Последний остался! Где-то совсем глубоко…', true);
 }
+function trFx(id, done) {
+  const f = $('trfx'); f.querySelector('.trimg').src = 'assets/i/tr_' + id + '.webp';
+  const cf = f.querySelector('.conf'); cf.innerHTML = '';
+  const cols = ['#ffd84a', '#ff6b9a', '#6fd8ff', '#7dff6a', '#b06bff', '#ff9d2e'];
+  for (let i = 0; i < 46; i++) { const e = document.createElement('i'); e.style.left = (Math.random() * 100) + '%'; e.style.background = cols[i % cols.length]; e.style.animationDelay = (Math.random() * .9) + 's'; e.style.animationDuration = (1.6 + Math.random() * 1.2) + 's'; e.style.transform = `rotate(${Math.random() * 360}deg)`; cf.appendChild(e); }
+  for (let i = 0; i < 6; i++) { const e = document.createElement('img'); e.src = 'assets/fin/firework.webp'; e.className = 'fw'; e.style.left = (8 + Math.random() * 74) + '%'; e.style.top = (6 + Math.random() * 40) + '%'; e.style.animationDelay = (i * .32) + 's'; cf.appendChild(e); }
+  f.classList.remove('hidden', 'go'); void f.offsetWidth; f.classList.add('go');
+  SFX.build(); setTimeout(() => SFX.gem(), 300); setTimeout(() => SFX.gem(), 700); haptic('success');
+  setTimeout(() => { f.classList.add('hidden'); f.classList.remove('go'); done(); }, 2800);
+}
 function trComplete() {
+  const T0 = TREASURES[S.tr.t]; paused = true;
+  trFx(T0.id, trCompleteModal);
+}
+function trCompleteModal() {
   const T = TREASURES[S.tr.t]; S.coins += T.reward; S.coll.tr = S.coll.tr || []; if (S.coll.tr.indexOf(T.id) < 0) S.coll.tr.push(T.id);
   track('tr_done', { t: S.tr.t }); S.tr = { t: S.tr.t + 1, got: [] }; trCache = null; dirty = true; save(true);
   const next = TREASURES[S.tr.t];
@@ -1443,6 +1457,7 @@ function buildSegment() {
   for (const k of p.path) rf[k] = 1;
   for (let y = CT; y <= CB; y++) for (let x = bx(S.built) - 1; x <= bx(S.built) + 1; x++) rf[idx(x, y)] = 1;
   const segN = S.built; S.built++;
+  segRank(segN);
   if (S.stats.segEvac === 0) questDone('noevac');
   S.stats.segEvac = 0;
   if (S.built > 7) S.proto = false;
@@ -1455,6 +1470,28 @@ function buildSegment() {
   catSay('station');
   banner('🎉 ' + stationName(S.built).toUpperCase() + ' ОТКРЫТА · +' + reward + ' 🪙', 'Тоннель: ' + pct() + '%');
   setTimeout(() => chapterIntro(), 2800);
+}
+
+// Время прохождения участка и сравнение с другими игроками — реплика персонажа
+function fmtDur(t) { t = Math.max(1, Math.round(t)); const m = Math.floor(t / 60), s = t % 60; return m ? `${m} мин ${s} с` : `${s} с`; }
+function segRank(n) {
+  const now = S.stats.playTime, t = now - (S.segT0 || 0); S.segT0 = now; dirty = true;
+  if (!(t > 5)) return;
+  const who = ['petrovich', 'alya', 'bob'][n % 3];
+  const local = () => say(who, `Участок ${n + 1} пройден за ${fmtDur(t)}. Неплохой темп!`, true);
+  if (!inTG || !window.DIG_API || !tg.initData) { setTimeout(local, 3200); return; }
+  fetch(window.DIG_API + '/seg', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ init: tg.initData, n, t: Math.round(t) }) })
+    .then(r => r.ok ? r.json() : null).then(d => {
+      setTimeout(() => {
+        if (!d || typeof d.faster !== 'number') return local();
+        let txt;
+        if (d.total < 5) txt = `Участок ${n + 1} — за ${fmtDur(t)}. Ты один из первых, кто его прошёл!`;
+        else if (d.faster >= 90) txt = `Участок ${n + 1} — за ${fmtDur(t)}! Это быстрее, чем у ${d.faster}% игроков. Ты в топе!`;
+        else if (d.faster >= 50) txt = `Участок ${n + 1} — за ${fmtDur(t)}. Быстрее, чем у ${d.faster}% игроков. Хороший темп!`;
+        else txt = `Участок ${n + 1} — за ${fmtDur(t)}. Быстрее, чем у ${d.faster}% игроков. Обычно его проходят за ${fmtDur(d.med)} — прокачай бур!`;
+        say(who, txt, true);
+      }, 3200);
+    }).catch(() => setTimeout(local, 3200));
 }
 
 function askWrite() {
@@ -1730,7 +1767,8 @@ $('setBtnT').addEventListener('click', () => { openSettings(); });
 $('sheetX').addEventListener('click', () => { if (!$('title').classList.contains('hidden')) paused = true; });
 
 function newCampaign() {
-  const keep = S ? { coll: S.coll, ach: S.ach, set: S.set, completions: S.completions } : {};
+  // покупки из лавки, легендарный бур, друзья и коллекция переходят в новую кампанию
+  const keep = S ? { coll: S.coll, ach: S.ach, set: S.set, completions: S.completions, shop: S.shop, legend: S.legend, refs: S.refs, buys: S.buys } : {};
   S = Object.assign(defaultState(), keep); S.tut.intro = false;
   setGeo(GEO_CUR); generate(S.seed); computeDist(); teleport(0); reveal(M.x, M.y, 3);
   $('finale').classList.add('hidden'); $('sheet').classList.add('hidden'); $('modal').classList.add('hidden');
@@ -1785,7 +1823,7 @@ function boot() {
   }
   resize();
   loadAll(saved => {
-    if (saved && saved.v === 1) { S = Object.assign(defaultState(), saved); if (!saved.wv) delete S.wv; applyStateToMap(); M.x = S.x; M.y = S.y; M.rx = M.x; M.ry = M.y; const k = idx(M.x, M.y); atBase = isOpenBase(k) ? baseAt[k] : -1; if (atBase < 0) run = { fuel0: S.fuel, maxHeat: 0, away: 0 }; }
+    if (saved && saved.v === 1) { S = Object.assign(defaultState(), saved); if (!saved.wv) delete S.wv; if (saved.segT0 === undefined) S.segT0 = S.stats.playTime; applyStateToMap(); M.x = S.x; M.y = S.y; M.rx = M.x; M.ry = M.y; const k = idx(M.x, M.y); atBase = isOpenBase(k) ? baseAt[k] : -1; if (atBase < 0) run = { fuel0: S.fuel, maxHeat: 0, away: 0 }; }
     else { S = defaultState(); setGeo(GEO_CUR); generate(S.seed); computeDist(); teleport(0); }
     reveal(M.x, M.y, 3);
     camX = M.x * TS - VW / 2; camY = M.y * TS - VH / 2;
