@@ -1548,14 +1548,14 @@ $('menuBtn').addEventListener('click', () => {
   if (!S) return;
   openSheet('Menu', `${refReady() ? inviteBlock() : ''}<button class="btn wide" id="m-share">📣 Share progress</button>
     ${F.shop ? '<button class="btn sec2 wide" id="m-shop">⭐ Billionaire\'s shop</button>' : ''}
-    <button class="btn sec2 wide" id="m-coll">💎 Collection & achievements</button>
+    ${collOpen() ? '<button class="btn sec2 wide" id="m-coll">💎 Collection & achievements</button>' : ''}
     <button class="btn sec2 wide" id="m-set">⚙️ Settings</button>
     <button class="btn sec2 wide" id="m-sos"><img class="mi" src="assets/i/evac.webp" alt="">Stuck? Evacuation</button>
     <button class="btn sec2 wide" id="m-title"><img class="mi" src="assets/i/home.webp" alt="">Main screen</button>`);
   $('m-share').onclick = () => openShare();
   if ($('inviteBtn')) $('inviteBtn').onclick = invite;
   if ($('m-shop')) $('m-shop').onclick = () => openShop();
-  $('m-coll').onclick = () => openCollection();
+  if ($('m-coll')) $('m-coll').onclick = () => openCollection();
   $('m-set').onclick = () => openSettings();
   $('m-sos').onclick = () => { closeSheet(); if (atBase >= 0) return toast('You\'re already at the base'); evacuate('sos'); };
   $('m-title').onclick = () => { closeSheet(); save(true); showTitle(); };
@@ -1746,7 +1746,10 @@ function renderFinale(dt) {
 }
 
 // ---------- Экраны ----------
+// «Коллекция» появляется только после 5-го участка (или если игра уже пройдена)
+const collOpen = () => !!S && (S.built >= 5 || S.done || S.completions > 0);
 function showTitle() {
+  $('collBtnT').classList.toggle('hidden', !collOpen());
   paused = true; $('title').classList.remove('hidden'); $('hud').classList.add('hidden'); $('controls').classList.add('hidden');
   if (S) $('tprog').innerHTML = `Tunnel: <b>${pct()}%</b> · ${S.built < NCH ? 'Chapter ' + (S.built + 1) + ': ' + C.CHAPTERS_DATA[S.built].title : 'Continents connected!'}<br>💎 ${S.stats.diamonds} · 🪙 ${Math.floor(S.coins)}`;
   $('playBtn').innerHTML = '<img class="bi" src="assets/i/dig.webp" alt="">' + (S && (S.stats.sorties > 0 || S.built > 0) ? 'Continue' : 'Dig');

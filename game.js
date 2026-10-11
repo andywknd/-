@@ -1546,14 +1546,14 @@ $('menuBtn').addEventListener('click', () => {
   if (!S) return;
   openSheet('Меню', `${refReady() ? inviteBlock() : ''}<button class="btn wide" id="m-share">📣 Поделиться прогрессом</button>
     ${F.shop ? '<button class="btn sec2 wide" id="m-shop">⭐ Лавка миллиардера</button>' : ''}
-    <button class="btn sec2 wide" id="m-coll">💎 Коллекция и достижения</button>
+    ${collOpen() ? '<button class="btn sec2 wide" id="m-coll">💎 Коллекция и достижения</button>' : ''}
     <button class="btn sec2 wide" id="m-set">⚙️ Настройки</button>
     <button class="btn sec2 wide" id="m-sos"><img class="mi" src="assets/i/evac.webp" alt="">Застрял? Эвакуация</button>
     <button class="btn sec2 wide" id="m-title"><img class="mi" src="assets/i/home.webp" alt="">На главный экран</button>`);
   $('m-share').onclick = () => openShare();
   if ($('inviteBtn')) $('inviteBtn').onclick = invite;
   if ($('m-shop')) $('m-shop').onclick = () => openShop();
-  $('m-coll').onclick = () => openCollection();
+  if ($('m-coll')) $('m-coll').onclick = () => openCollection();
   $('m-set').onclick = () => openSettings();
   $('m-sos').onclick = () => { closeSheet(); if (atBase >= 0) return toast('Ты и так на базе'); evacuate('sos'); };
   $('m-title').onclick = () => { closeSheet(); save(true); showTitle(); };
@@ -1744,7 +1744,10 @@ function renderFinale(dt) {
 }
 
 // ---------- Экраны ----------
+// «Коллекция» появляется только после 5-го участка (или если игра уже пройдена)
+const collOpen = () => !!S && (S.built >= 5 || S.done || S.completions > 0);
 function showTitle() {
+  $('collBtnT').classList.toggle('hidden', !collOpen());
   paused = true; $('title').classList.remove('hidden'); $('hud').classList.add('hidden'); $('controls').classList.add('hidden');
   if (S) $('tprog').innerHTML = `Тоннель: <b>${pct()}%</b> · ${S.built < NCH ? 'Глава ' + (S.built + 1) + ': ' + C.CHAPTERS_DATA[S.built].title : 'Континенты соединены!'}<br>💎 ${S.stats.diamonds} · 🪙 ${Math.floor(S.coins)}`;
   $('playBtn').innerHTML = '<img class="bi" src="assets/i/dig.webp" alt="">' + (S && (S.stats.sorties > 0 || S.built > 0) ? 'Продолжить' : 'Копать');
