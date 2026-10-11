@@ -152,10 +152,10 @@ const F = {
   get scan() { return S.built >= 2; },
   get hull() { return S.built >= 3; },
   get quests() { return S.built >= 2; },
-  get shop() { return S.built >= 2 && shopReady(); },
+  get shop() { return S.built >= 1 && shopReady(); },
   cons(k) { return k === 'cool' ? S.built >= 1 : k === 'can' ? S.built >= 2 : S.built >= 3; },
   up(k) { return ['drill', 'tank', 'cargo'].includes(k) || (k === 'cooling' && S.built >= 1) || (k === 'scanner' && S.built >= 2) || ((k === 'hull' || k === 'drive') && S.built >= 3); },
-  item(id) { return ['cat', 'skin_gold', 'coins'].includes(id) ? S.built >= 2 : ['lift', 'tank_plus'].includes(id) ? S.built >= 3 : S.built >= 4; },
+  item(id) { return ['cat', 'skin_gold', 'coins'].includes(id) ? S.built >= 1 : ['lift', 'tank_plus'].includes(id) ? S.built >= 3 : S.built >= 4; },
 };
 
 function applyStateToMap() {
@@ -1180,7 +1180,27 @@ function chapterIntro() {
   const lines = C.CHAPTERS_DATA[c].intro.slice();
   if (shopReady() && c === 2) lines.push(['billionaire', 'Кстати! Открыл «Лавку миллиардера» ⭐ — кот-прораб, золотой бур и прочие радости. Можно и без них, но с котом веселее.']);
   if (shopReady() && (c === 3 || c === 4)) lines.push(['billionaire', 'В лавке новинки! Загляни на базе, если спешишь к финишу.']);
-  setTimeout(() => dialog(lines), 1500);
+  setTimeout(() => dialog(lines, () => setTimeout(showOffer, 400)), 1500);
+}
+
+// После каждого пройденного участка — предложение прокачаться (звёзды или друг). Можно закрыть.
+function showOffer() {
+  if (S.built < 1 || S.built >= NCH || S.offerShown === S.built) return;
+  const canInvite = refReady() && S.refs.n < 3;
+  const items = shopReady() ? C.SHOP.filter(it => F.item(it.id) && !it.consumable && !S.shop[it.id]) : [];
+  if (!canInvite && !items.length) return; // всё куплено и все друзья позваны — не надоедаем
+  S.offerShown = S.built; dirty = true;
+  const pick = items.slice(0, canInvite ? 2 : 3);
+  if (pick.length < (canInvite ? 2 : 3) && shopReady()) { const t = C.SHOP.find(i => i.id === 'estimate' && F.item(i.id)) || C.SHOP.find(i => i.id === 'coins'); if (t) pick.push(t); }
+  const cards = (canInvite ? `<button class="offer inv" data-o="invite"><div class="oi">👥</div><b>Позвать друга</b><span>🎟 бесплатное улучшение</span><i>Бесплатно</i></button>` : '') +
+    pick.map(it => `<button class="offer" data-o="${it.id}"><img src="assets/shop_${it.id}.webp" alt=""><b>${it.name}</b><span>${it.desc.split('.')[0]}</span><i>⭐ ${it.stars}</i></button>`).join('');
+  modal(`<h2 style="text-align:center">🎉 Участок пройден!</h2><p style="text-align:center;margin-top:0">Прокачаешься перед следующим?</p><div class="offers">${cards}</div>`,
+    [{ t: 'Нет, копаем дальше', cls: 'btn sec2' }]);
+  track('offer_show', { b: S.built });
+  $('modalCard').querySelectorAll('[data-o]').forEach(el => el.onclick = () => {
+    const id = el.dataset.o; $('modal').classList.add('hidden'); paused = false; track('offer_click', { id });
+    if (id === 'invite') invite(); else buy(id);
+  });
 }
 
 // ---------- Карта/меню ----------

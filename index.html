@@ -126,6 +126,15 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .invite .ibig{font-size:30px;margin-left:6px;filter:grayscale(1);opacity:.5}
 .invite .ibig.on{filter:none;opacity:1}
 .invite .irules{font-size:12.5px;color:#cfc6f2;margin-bottom:8px;line-height:1.45}
+.offers{display:flex;gap:8px;margin-top:10px}
+.offer{flex:1;min-width:0;background:var(--panel2);border:1px solid #3a5566;border-radius:14px;padding:10px 6px;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--text);text-align:center}
+.offer img{width:52px;height:52px;object-fit:contain}
+.offer .oi{font-size:40px;height:52px;display:flex;align-items:center}
+.offer b{font-size:13px;line-height:1.2}
+.offer span{font-size:11px;color:#9db4c2;line-height:1.25}
+.offer i{font-style:normal;font-weight:800;background:linear-gradient(180deg,#ffb54a,#ff8a1f);color:#2a1300;border-radius:9px;padding:5px 10px;margin-top:auto;font-size:13px}
+.offer.inv{border-color:#5b4aa0;background:#241e40}
+.offer.inv i{background:linear-gradient(180deg,#6af0a0,#2fbf6a);color:#04210f}
 .summary{background:#203a2c;border:1px solid #2f6b48;border-radius:12px;padding:9px 11px;font-size:13.5px;margin-bottom:10px;line-height:1.4}
 
 /* Экраны */
@@ -258,7 +267,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 <div id="finale" class="screen hidden" style="background:#0b1620"><canvas id="finc"></canvas><div class="body" id="finBody" style="padding:12px 14px calc(var(--sab) + 16px);overflow:auto;flex:1;touch-action:pan-y"></div></div>
 
 <script src="config.js?v=8"></script>
-<script src="shop-links.js?v=9"></script>
-<script src="game.js?v=9"></script>
+<script src="shop-links.js?v=10"></script>
+<script src="game.js?v=10"></script>
 </body>
 </html>

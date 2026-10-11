@@ -290,6 +290,13 @@ def app_link(start: str = "") -> str:
     return f"https://t.me/{BOT_USERNAME}" + (f"?start={start}" if start else "")
 
 
+def invite_url(uid: int) -> str:
+    from urllib.parse import quote
+    link = app_link(f"r{uid}")
+    text = "Копаю тоннель от Чукотки до Аляски ⛏ Присоединяйся — посмотрим, кто докопается первым!"
+    return f"https://t.me/share/url?url={quote(link, safe='')}&text={quote(text, safe='')}"
+
+
 def play_kb_private() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⛏ Копать до Америки", web_app=WebAppInfo(url=GAME_URL))]])
 
@@ -325,7 +332,7 @@ START_TEXT = (
     "⛏ Веди буровую от Чукотки до Аляски и открывай станции\n"
     "💎 Сворачивай за золотом и алмазами — они превращаются в монеты\n"
     "⚙️ Прокачивай бур, бак и отсек\n"
-    "👥 Зови друзей — за каждого бесплатное улучшение\n\n"
+    "👥 {invite} — за каждого бесплатное улучшение\n\n"
     "<i>Игра от <a href=\"https://t.me/moscowmap\">«Новостей Москвы»</a>. Все персонажи и события вымышлены.</i>"
 )
 
@@ -337,7 +344,12 @@ async def start(m: Message, command: CommandObject):
     touch_player(u.id, started=1, unblock=1, name=(u.full_name or "")[:64], username=(u.username or "")[:32],
                  lang=(u.language_code or "")[:8], premium=1 if u.is_premium else 0, ref=(command.args or "")[:32] or None)
     add_event(u.id, "bot_start", {"ref": command.args} if command.args else None)
-    res = await send_safe(lambda: m.answer_photo(promo_photo(), caption=START_TEXT, parse_mode="HTML", reply_markup=play_kb_private()))
+    share = invite_url(u.id)
+    text = START_TEXT.replace("{invite}", f'<a href="{share}">Зови друзей</a>')
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⛏ Копать до Америки", web_app=WebAppInfo(url=GAME_URL))],
+        [InlineKeyboardButton(text="👥 Пригласить друга", url=share)]])
+    res = await send_safe(lambda: m.answer_photo(promo_photo(), caption=text, parse_mode="HTML", reply_markup=kb))
     if res and res.photo and not promo_file_id:
         promo_file_id = res.photo[-1].file_id
 
