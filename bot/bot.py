@@ -52,6 +52,7 @@ ADMINS = {int(x) for x in os.environ.get("ADMINS", "643643").replace(" ", "").sp
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "digtunnelbot")
 API_URL = os.environ.get("API_URL", "").rstrip("/")
 API_PORT = int(os.environ.get("API_PORT", "8090"))
+NEWS_CHANNEL = os.environ.get("NEWS_CHANNEL", "@moscowmap")   # подписка на канал = фирменный бур в игре
 PROMO_URL = GAME_URL + "assets/promo.jpg"
 PROMO_FILE = BASE.parent / "assets" / "promo.jpg"
 
@@ -350,6 +351,38 @@ async def api_seg(req: web.Request):
     return cors(web.json_response({"faster": faster, "total": total, "med": round(med[0]) if med else round(t)}))
 
 
+LAST_SUB: dict[int, float] = {}
+
+
+async def api_sub(req: web.Request):
+    """Проверка подписки на канал «Новости Москвы» (бот должен быть админом канала, права не нужны)."""
+    if req.method == "OPTIONS":
+        return cors(web.Response(status=204))
+    try:
+        body = json.loads(await req.text())
+    except Exception:
+        return cors(web.Response(status=400))
+    user = check_init(body.get("init", ""))
+    if not user:
+        return cors(web.Response(status=403))
+    uid = int(user["id"])
+    now = time.time()
+    if now - LAST_SUB.get(uid, 0) < 3:
+        return cors(web.Response(status=429))
+    LAST_SUB[uid] = now
+    try:
+        cm = await bot.get_chat_member(NEWS_CHANNEL, uid)
+        st = getattr(cm, "status", "")
+        st = getattr(st, "value", st)
+        ok = st in ("member", "administrator", "creator") or (st == "restricted" and getattr(cm, "is_member", False))
+    except Exception as e:
+        alert("sub_check", f"⚠️ Не получается проверить подписку на {esc(NEWS_CHANNEL)}: {esc(e)}\nДобавь бота администратором канала (без прав).", 3600)
+        return cors(web.json_response({"sub": False, "err": "check"}))
+    if ok:
+        add_event(uid, "news_sub")
+    return cors(web.json_response({"sub": ok}))
+
+
 async def api_health(req):
     return web.json_response({"ok": True, "buffer": len(EV_BUF)})
 
@@ -543,6 +576,7 @@ async def start_api():
     app.router.add_route("*", "/api/me", api_me)
     app.router.add_route("*", "/api/seg", api_seg)
     app.router.add_route("*", "/api/err", api_err)
+    app.router.add_route("*", "/api/sub", api_sub)
     app.router.add_route("*", "/api/report", api_report)
     runner = web.AppRunner(app, access_log=None)
     await runner.setup()
@@ -798,6 +832,7 @@ async def _stats(m: Message):
     shares = q1("SELECT SUM(shares) FROM players")
     refs = q1("SELECT COUNT(*) FROM players WHERE ref LIKE 'r%'")
     from_ch = q1("SELECT COUNT(*) FROM players WHERE ref='ch'")
+    news_subs = q1("SELECT COUNT(DISTINCT uid) FROM events WHERE ev='news_sub'")
     premium = q1("SELECT COUNT(*) FROM players WHERE premium=1")
     buys, stars_sum = db.execute("SELECT COUNT(*), COALESCE(SUM(stars),0) FROM purchases WHERE refunded=0").fetchone()
     payers = q1("SELECT COUNT(DISTINCT uid) FROM purchases WHERE refunded=0")
@@ -822,7 +857,8 @@ async def _stats(m: Message):
         f"📣 <b>Вирусность</b>\n"
         f"• отправлено карточек: {shares}\n"
         f"• пришли по приглашению друга: {refs}\n"
-        f"• пришли из поста в канале: {from_ch}\n\n"
+        f"• пришли из поста в канале: {from_ch}\n"
+        f"• подписались на канал за фирменный бур: {news_subs}\n\n"
         f"⭐ <b>Звёзды</b>\n"
         f"• покупок: {buys} на <b>{stars_sum}</b> ⭐, платящих: {payers} ({pct(payers, players)})"
         + "".join(f"\n  · {PRODUCTS.get(i, (i,))[0]}: {n}" for i, n in top) + "\n\n"

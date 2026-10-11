@@ -167,7 +167,7 @@ const hullMax = () => upv('hull');
 const cargoMax = () => upv('cargo');
 const consCap = () => 1 + (S.up.cargo >= 3 ? 1 : 0) + (S.up.cargo >= 5 ? 1 : 0);
 const drillCap = () => S.up.drill + 1 + (S.proto ? 1 : 0) + (S.legend ? 1 : 0);
-const drillDps = () => upv('drill') * (S.proto ? 1.7 : 1) * (S.legend ? 1.3 : 1) * (S.turboUntil > S.stats.playTime ? 2 : 1);
+const drillDps = () => upv('drill') * (S.proto ? 1.7 : 1) * (S.legend ? 1.3 : 1) * (S.shop.nm ? 1.06 : 1) * (S.turboUntil > S.stats.playTime ? 2 : 1);
 const fenceX = () => S.built >= NCH ? W : bx(S.built + 1) + 2;
 const isOpenBase = k => baseAt[k] >= 0 && baseAt[k] <= S.built;
 // Один процент везде: доля прокопанной длины тоннеля (учитывает длинные финальные участки)
@@ -314,7 +314,7 @@ function haptic(kind) {
 
 // ---------- Ассеты ----------
 const IMG = {};
-['drill', 'drill_2', 'drill_3', 'drill_4', 'drill_5', 'att/tank', 'att/cool', 'att/radar', 'att/cargo', 'att/armor', 'att/turbo', 'station', 'petrovich', 'alya', 'bob', 'billionaire', 'train', 'drill_gold', 'cat_sit', 'i_tank', 'i_rocket', 'i_ins'].forEach(n => {
+['drill', 'drill_2', 'drill_3', 'drill_4', 'drill_5', 'drill_nm', 'att/tank', 'att/cool', 'att/radar', 'att/cargo', 'att/armor', 'att/turbo', 'station', 'petrovich', 'alya', 'bob', 'billionaire', 'train', 'drill_gold', 'cat_sit', 'i_tank', 'i_rocket', 'i_ins'].forEach(n => {
   const i = new Image(); i.src = 'assets/' + n + '.webp'; IMG[n] = i;
 });
 const ok = i => i && i.complete && i.naturalWidth > 0;
@@ -1094,7 +1094,7 @@ function drawMachine(ts, ox, oy) {
   if (S.heat > 75) { cx.shadowColor = '#ff4a1a'; cx.shadowBlur = 14 + Math.sin(time * 12) * 6; }
   const lvSpr = S.up.drill > 1 && ok(IMG['drill_' + S.up.drill]) ? IMG['drill_' + S.up.drill] : IMG.drill;
   const sk = curSkin();
-  const spr = sk ? skinSprite(sk) : S.legend && ok(IMG.drill_legend) ? IMG.drill_legend : itemOn('skin_gold') ? (ok(IMG.drill_gold) ? IMG.drill_gold : goldSprite()) : lvSpr;
+  const spr = sk ? skinSprite(sk) : S.legend && ok(IMG.drill_legend) ? IMG.drill_legend : itemOn('nm') && ok(IMG.drill_nm) ? IMG.drill_nm : itemOn('skin_gold') ? (ok(IMG.drill_gold) ? IMG.drill_gold : goldSprite()) : lvSpr;
   const sw0 = spr.naturalWidth || spr.width || 256, sh0 = spr.naturalHeight || spr.height || 190, dh = s * sh0 / sw0;
   // навесное оборудование: видно, что улучшено (растёт с уровнем)
   const att = (n, x, y, w, ax, ay) => { const im = IMG['att/' + n]; if (!ok(im)) return; const h = w * im.naturalHeight / im.naturalWidth; cx.drawImage(im, x - w * ax, y - h * ay, w, h); };
@@ -1404,6 +1404,7 @@ function openBase() {
     return `<div class="cc"><img src="${icSrc(CONS_IC[k])}" alt=""><div class="cn">${c.name}</div><div class="cd">${c.desc}</div><div class="cq">в машине: <b>${S.cons[k]}/${consCap()}</b></div>
       <button class="btn" data-cons="${k}" ${full || S.coins < c.price ? 'disabled' : ''}>${full ? 'Полно' : c.price + ' 🪙'}</button></div>`; }).join('') + `</div>`;
   if (refReady()) h += `<div style="margin-top:12px">${inviteBlock()}</div>`;
+  if (nmQuestOn()) h += nmCard();
   // 5) Свернуть можно только задания и переезд
   const fold = (id, title, inner) => `<details class="fold" data-fold="${id}" ${baseFolds[id] ? 'open' : ''}><summary>${title}</summary><div class="fb">${inner}</div></details>`;
   const aq = F.quests ? activeQuests() : [];
@@ -1418,6 +1419,7 @@ function openBase() {
   const on = (id, fn) => { const e = body.querySelector('#' + id); if (e) e.onclick = fn; };
   on('goBtn', closeSheet);
   bindShop(() => openBase());
+  bindNm();
   bindSkins(() => openBase());
   on('shopBtn', () => openShop(true));
   on('protoBtn', () => { S.proto = !S.proto; if (S.proto) say('billionaire', C.CHAPTERS_DATA[7].joke, true); dirty = true; openBase(); });
@@ -1546,22 +1548,53 @@ function chapterIntro() {
 }
 
 // После каждого пройденного участка — предложение прокачаться (звёзды или друг). Можно закрыть.
+// ---------- Задание: подписка на «Новости Москвы» -> фирменный бур ----------
+const NM_LINK = 'https://t.me/moscowmap';
+let nmPending = false;
+const nmQuestOn = () => !!S && !S.shop.nm && S.built >= 1;
+function nmCard() {
+  return `<div class="nmq"><div class="nmt"><img src="assets/drill_nm.webp" alt=""><div><b>Задание: подпишись на «Новости Москвы»</b><span>Награда — фирменный красный бур с логотипом канала. Копает чуть быстрее.</span></div></div>
+    <div class="nmb"><button class="btn bad" id="nmGo">Подписаться</button><button class="btn sec2" id="nmCheck">Я подписался ✓</button></div></div>`;
+}
+function bindNm() {
+  const go = $('nmGo'), ch = $('nmCheck');
+  if (go) go.onclick = nmSubscribe;
+  if (ch) ch.onclick = () => nmCheck(true);
+}
+function nmSubscribe() {
+  track('nm_open'); nmPending = true;
+  try { if (inTG && tg.openTelegramLink) tg.openTelegramLink(NM_LINK); else window.open(NM_LINK, '_blank'); } catch (e) { location.href = NM_LINK; }
+}
+function nmCheck(manual) {
+  if (!S || S.shop.nm) return;
+  if (!inTG || !window.DIG_API || !tg.initData) { if (manual) toast('Проверка работает внутри Telegram'); return; }
+  fetch(window.DIG_API + '/sub', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ init: tg.initData }) })
+    .then(r => r.ok ? r.json() : null).then(d => {
+      if (d && d.sub) {
+        nmPending = false; S.shop.nm = true; S.set.off_nm = false; if (skinsOpen()) S.skin = 'nm'; dirty = true; save(true);
+        track('nm_sub'); SFX.build(); haptic('success');
+        if (!$('sheet').classList.contains('hidden') && atBase >= 0) openBase();
+        showBrag('assets/drill_nm.webp', 'Фирменный бур получен!', 'Спасибо за подписку на «Новости Москвы»');
+        setTimeout(() => say('petrovich', 'Ого, фирменный бур «Новостей Москвы»! Красный, с логотипом — и копает чуть бодрее.', true), 900);
+      } else if (manual) toast(d && d.err ? 'Не удалось проверить, попробуй чуть позже' : 'Подписка пока не видна — подпишись на канал и нажми ещё раз');
+    }).catch(() => { if (manual) toast('Нет связи с сервером, попробуй позже'); });
+}
 function showOffer() {
   if (S.built < 1 || S.built >= NCH || S.offerShown === S.built) return;
-  const canInvite = refReady() && S.refs.n < 3;
+  const canInvite = refReady() && S.refs.n < 3, canNm = nmQuestOn();
   const items = shopReady() ? C.SHOP.filter(it => F.item(it.id) && !it.consumable && !S.shop[it.id]) : [];
-  if (!canInvite && !items.length) return; // всё куплено и все друзья позваны — не надоедаем
+  if (!canInvite && !canNm && !items.length) return; // всё куплено и все друзья позваны — не надоедаем
   S.offerShown = S.built; dirty = true;
-  const pick = items.slice(0, canInvite ? 2 : 3);
+  const pick = items.slice(0, Math.max(1, 3 - (canInvite ? 1 : 0) - (canNm ? 1 : 0)));
   if (pick.length < (canInvite ? 2 : 3) && shopReady()) { const t = C.SHOP.find(i => i.id === 'estimate' && F.item(i.id)) || C.SHOP.find(i => i.id === 'coins'); if (t) pick.push(t); }
-  const cards = (canInvite ? `<button class="offer inv" data-o="invite"><div class="oi">👥</div><b>Позвать друга</b><span>🎟 бесплатное улучшение</span><i>Бесплатно</i></button>` : '') +
+  const cards = (canNm ? `<button class="offer nm" data-o="nm"><img src="assets/drill_nm.webp" alt=""><b>Бур «Новости Москвы»</b><span>за подписку на канал</span><i>Бесплатно</i></button>` : '') + (canInvite ? `<button class="offer inv" data-o="invite"><div class="oi">👥</div><b>Позвать друга</b><span>🎟 бесплатное улучшение</span><i>Бесплатно</i></button>` : '') +
     pick.map(it => `<button class="offer" data-o="${it.id}"><img src="assets/shop_${it.id}.webp" alt=""><b>${it.name}</b><span>${it.desc.split('.')[0]}</span><i>⭐ ${it.stars}</i></button>`).join('');
   modal(`<h2 style="text-align:center">🎉 Участок пройден!</h2><p style="text-align:center;margin-top:0">Прокачаешься перед следующим?</p><div class="offers">${cards}</div>`,
     [{ t: 'Нет, копаем дальше', cls: 'btn sec2' }]);
   track('offer_show', { b: S.built });
   $('modalCard').querySelectorAll('[data-o]').forEach(el => el.onclick = () => {
     const id = el.dataset.o; $('modal').classList.add('hidden'); paused = false; track('offer_click', { id });
-    if (id === 'invite') invite(); else buy(id);
+    if (id === 'invite') invite(); else if (id === 'nm') nmSubscribe(); else buy(id);
   });
 }
 
@@ -1611,6 +1644,7 @@ const SKINS = [
   { id: 'd1', img: 'drill', name: 'Классика' }, { id: 'd2', img: 'drill_2', name: 'Медный' }, { id: 'd3', img: 'drill_3', name: 'Стальной' },
   { id: 'd4', img: 'drill_4', name: 'Изумрудный' }, { id: 'd5', img: 'drill_5', name: 'Плазменный' },
   { id: 'gold', img: 'drill_gold', name: 'Золотой', lock: () => !S.shop.skin_gold },
+  { id: 'nm', img: 'drill_nm', name: '«Новости Москвы»', lock: () => !S.shop.nm },
   { id: 'legend', img: 'drill_legend', name: 'Платиновый', lock: () => !S.legend },
 ];
 const skinsOpen = () => !!S && (S.done || S.completions > 0);
@@ -1624,7 +1658,7 @@ function skinsHtml() {
   const cur = curSkin() || (S.legend ? 'legend' : 'd' + S.up.drill);
   return `<div class="ups-h"><span>🎨 Оформление буровой</span></div><div class="skins">` + SKINS.map(k => {
     const locked = k.lock && k.lock();
-    return `<button class="skin ${k.id === cur ? 'on' : ''} ${locked ? 'lock' : ''}" data-skin="${k.id}" ${locked ? 'disabled' : ''}><img src="assets/${k.img}.webp" alt=""><span>${k.name}</span>${locked ? '<i>⭐ в лавке</i>' : ''}</button>`;
+    return `<button class="skin ${k.id === cur ? 'on' : ''} ${locked ? 'lock' : ''}" data-skin="${k.id}" ${locked ? 'disabled' : ''}><img src="assets/${k.img}.webp" alt=""><span>${k.name}</span>${locked ? (k.id === 'nm' ? '<i>за подписку</i>' : '<i>⭐ в лавке</i>') : ''}</button>`;
   }).join('') + `</div>`;
 }
 function bindSkins(reopen) {
@@ -1650,7 +1684,7 @@ function openBugReport() {
 function openSettings() {
   const t = (k, name) => `<label class="toggle"><span>${name}</span><input type="checkbox" data-set="${k}" ${S.set[k] ? 'checked' : ''}></label>`;
   const ti = (id, name) => S.shop[id] ? `<label class="toggle"><span>${name}</span><input type="checkbox" data-inv="${id}" ${itemOn(id) ? 'checked' : ''}></label>` : '';
-  openSheet('Настройки', `<div class="sec">${t('sound', '🔊 Звук')}${t('jokes', '💬 Реплики персонажей')}${t('vibro', '📳 Вибрация')}${t('calm', '🌙 Меньше тряски и вспышек')}${ti('cat', '🐈 Кот-прораб на буровой')}${ti('skin_gold', '✨ Золотой бур')}</div>${skinsOpen() ? skinsHtml() : ''}
+  openSheet('Настройки', `<div class="sec">${t('sound', '🔊 Звук')}${t('jokes', '💬 Реплики персонажей')}${t('vibro', '📳 Вибрация')}${t('calm', '🌙 Меньше тряски и вспышек')}${ti('cat', '🐈 Кот-прораб на буровой')}${ti('skin_gold', '✨ Золотой бур')}${ti('nm', '📰 Бур «Новости Москвы»')}</div>${skinsOpen() ? skinsHtml() : ''}
     <div class="toggle"><span>🌐 Язык / Language</span><span class="langsw"><button class="btn ${window.LANG === 'en' ? 'sec2' : ''} sm" data-lang="ru">RU</button><button class="btn ${window.LANG === 'en' ? '' : 'sec2'} sm" data-lang="en">EN</button></span></div>
     <button class="btn sec2 wide" id="resetBtn">Начать кампанию заново</button>
     <p style="font-size:12px;color:#9db4c2">Прогресс сохраняется в облаке Telegram. Коллекция и достижения при перезапуске сохраняются.</p>`);
@@ -1665,7 +1699,7 @@ function openSettings() {
 // ---------- Лавка за Telegram Stars ----------
 function shopReady() { return !!(window.DIG_SHOP && inTG && tg.openInvoice && tg.isVersionAtLeast && tg.isVersionAtLeast('6.1')); }
 // Купленное можно включать и выключать (кот, золотой бур)
-const TOGGLABLE = { cat: ['Убрать кота', 'Вернуть кота'], skin_gold: ['Снять золото', 'Надеть золото'] };
+const TOGGLABLE = { cat: ['Убрать кота', 'Вернуть кота'], skin_gold: ['Снять золото', 'Надеть золото'], nm: ['Снять бур «НМ»', 'Надеть бур «НМ»'] };
 const itemOn = id => !!S.shop[id] && S.set['off_' + id] !== true;
 const catOn = () => itemOn('cat');
 function shopItemsHtml() {
@@ -1873,7 +1907,7 @@ function loop(now) {
 // Свернули приложение — тихая пауза; вернулись — игра продолжается сама (без всплывающих окон)
 let autoPaused = false;
 function onHide() { save(true); track('hide'); sendEvents(true); if (S && !paused) { paused = true; autoPaused = true; } joyId = null; joyDir = null; for (const k in keys) keys[k] = 0; }
-function onShow() { if (autoPaused) { autoPaused = false; const uiOpen = !$('sheet').classList.contains('hidden') || !$('dialog').classList.contains('hidden') || !$('modal').classList.contains('hidden') || !$('title').classList.contains('hidden'); if (!uiOpen) paused = false; } lastT = performance.now(); }
+function onShow() { if (nmPending) setTimeout(() => nmCheck(false), 700); if (autoPaused) { autoPaused = false; const uiOpen = !$('sheet').classList.contains('hidden') || !$('dialog').classList.contains('hidden') || !$('modal').classList.contains('hidden') || !$('title').classList.contains('hidden'); if (!uiOpen) paused = false; } lastT = performance.now(); }
 document.addEventListener('visibilitychange', () => { if (document.hidden) onHide(); else onShow(); });
 if (inTG && tg.onEvent) { try { tg.onEvent('deactivated', onHide); tg.onEvent('activated', onShow); } catch (e) {} }
 window.addEventListener('pagehide', () => save(true));
