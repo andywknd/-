@@ -87,7 +87,7 @@ function generate(seed) {
   // базы
   for (let i = 0; i <= NCH; i++) {
     for (let y = CT; y <= CB; y++) for (let x = bx(i) - 1; x <= bx(i) + 1; x++) { const k = idx(x, y); grid[k] = 0; baseAt[k] = i; }
-    for (let x = bx(i) - 1; x <= bx(i) + 1; x++) grid[idx(x, CB + 1)] = 6; // пол станции
+    for (let x = bx(i) - 1; x <= bx(i) + 1; x++) grid[idx(x, CB + 1)] = 2; // пол станции — пробивается (можно заехать на базу снизу)
   }
   const vein = (t, x, y, n, id) => {
     for (let s = 0; s < n; s++) {
@@ -930,6 +930,7 @@ function update(dt) {
           if (tx >= fenceX() && ty >= SURF) floater(tx, ty, 'Closed for now 🚧 Build this section first', '#ffd27a');
           else if (h < 99) { showDrillOffer(h - 1); SFX.warn(); }
           else if (ty <= SURF - 1) floater(tx, ty, 'The sea is above. We dig under the seabed!', '#9fd8ff');
+          else if (h >= 99) floater(tx, ty, 'Bedrock — can\'t drill through it. Go around!', '#ffd27a');
         }
       }
     }
@@ -1980,6 +1981,6 @@ function boot() {
   });
 }
 boot();
-window.__dig = { get S() { return S; }, M, setCell: (x, y, v) => { grid[idx(x, y)] = v; }, trPieces, trCheck, banner, flood, onArriveBase, respawnOres, bx, get W() { return W; }, segPath, teleport, buildSegment, fenceX, openBase, showDrillOffer,
+window.__dig = { get S() { return S; }, M, hardAt, get grid() { return grid; }, setCell: (x, y, v) => { grid[idx(x, y)] = v; }, trPieces, trCheck, banner, flood, onArriveBase, respawnOres, bx, get W() { return W; }, segPath, teleport, buildSegment, fenceX, openBase, showDrillOffer,
   digRow: (x0, x1, y) => { for (let x = x0; x <= x1; x++) { const k = idx(x, y); if (grid[k] < 6) { grid[k] = 0; dug[k] = 1; exp[k] = 1; } } computeDist(); }, bx, finale };
 })();
