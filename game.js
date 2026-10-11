@@ -277,6 +277,45 @@ const IMG = {};
   const i = new Image(); i.src = 'assets/' + n + '.webp'; IMG[n] = i;
 });
 const ok = i => i && i.complete && i.naturalWidth > 0;
+// ---------- Нарисованные иконки вместо эмодзи ----------
+const ICON_FILE = { scanner: 'up_scanner', hull: 'up_hull', drill: 'drill', cat: 'shop_cat', lift: 'shop_lift', train: 'train' };
+const icSrc = n => 'assets/' + (ICON_FILE[n] || 'i/' + n) + '.webp';
+const ICI = {};
+function drawIc(n, x, y, size) {
+  let im = ICI[n]; if (!im) { im = ICI[n] = new Image(); im.src = icSrc(n); }
+  if (!ok(im)) return; const w = size, h = size * im.naturalHeight / im.naturalWidth;
+  cx.drawImage(im, x - w / 2, y - h / 2, w, h);
+}
+const EMO = { '🪙': 'coin', '💰': 'coin', '⛽': 'fuel', '📦': 'cargo', '🎒': 'cargo', '🌡': 'heat', '🛡': 'hull', '🪨': 'iron', '🟠': 'copper', '🟡': 'gold',
+  '💎': 'diamond', '✨': 'diamond', '💗': 'pinkgem', '🏁': 'flag', '🎯': 'flag', '🏔': 'mountain', '👥': 'friends', '🙂': 'friends', '🎁': 'gift', '🎟': 'ticket',
+  '📨': 'envelope', '⚙': 'gear', '🏠': 'gear', '⭐': 'star', '🔧': 'repair', '❄': 'coolant', '🚰': 'pump', '🧰': 'container', '📍': 'pin', '☁': 'gas',
+  '🦣': 'mammoth', '🛢': 'oil', '📄': 'doc', '📋': 'doc', '⛏': 'pickaxe', '👆': 'hand', '🏆': 'trophy', '📣': 'megaphone', '📲': 'megaphone', '⚡': 'bolt',
+  '📡': 'scanner', '🚜': 'drill', '🐈': 'cat', '🚀': 'lift', '🚃': 'train', '🚇': 'train', '🚂': 'train' };
+const EMO_TXT = { '✅': '✓', '✔': '✓', '➡': '→', '⬆': '↑', '⬇': '↓', '➕': '+' };
+const EMO_RE = /(\p{Extended_Pictographic}|[\u2700-\u27BF\u2B06\u2B07\u2B50])(\uFE0F|\u200D\p{Extended_Pictographic}\uFE0F?)*/gu;
+function iconizeText(node) {
+  const t = node.nodeValue; if (!t || !EMO_RE.test(t)) return; EMO_RE.lastIndex = 0;
+  const frag = document.createDocumentFragment(); let last = 0, m;
+  while ((m = EMO_RE.exec(t))) {
+    if (m.index > last) frag.appendChild(document.createTextNode(t.slice(last, m.index)));
+    const base = m[0].replace(/\uFE0F|\u200D.*/gu, ''), n = EMO[base];
+    if (n) { const im = document.createElement('img'); im.className = 'ic'; im.src = icSrc(n); im.alt = ''; frag.appendChild(im); }
+    else if (EMO_TXT[base]) frag.appendChild(document.createTextNode(EMO_TXT[base]));
+    last = m.index + m[0].length;
+  }
+  if (last < t.length) frag.appendChild(document.createTextNode(t.slice(last)));
+  node.parentNode && node.parentNode.replaceChild(frag, node);
+}
+function iconizeDom(root) {
+  if (!root) return;
+  if (root.nodeType === 3) return iconizeText(root);
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); const list = [];
+  while (w.nextNode()) list.push(w.currentNode);
+  list.forEach(iconizeText);
+}
+iconizeDom(document.body);
+new MutationObserver(ms => { for (const m of ms) { if (m.type === 'characterData') iconizeText(m.target); else m.addedNodes.forEach(iconizeDom); } })
+  .observe(document.body, { childList: true, subtree: true, characterData: true });
 let goldC = null;
 function goldSprite() {
   if (goldC) return goldC; if (!ok(IMG.drill)) return IMG.drill;
@@ -736,7 +775,7 @@ function render() {
   if (S.built < NCH) { cx.fillStyle = 'rgba(255,200,60,.07)'; cx.fillRect(bx(S.built) * ts - ox, CT * ts - oy, (bx(S.built + 1) - bx(S.built)) * ts, (CB - CT + 1) * ts); }
   cx.restore();
   // декор
-  for (const d of decor) if (exp[idx(d.x, d.y)]) { const px = d.x * ts - ox, py = d.y * ts - oy; cx.font = `${ts * .8}px serif`; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(d.t === 'mammoth' ? '🦣' : d.t === 'oil' ? '🛢️' : '📄', px + ts / 2, py + ts / 2); if (d.t === 'mammoth' && !saidOnce.mam) { saidOnce.mam = 1; say('petrovich', C.CHAPTERS_DATA[1].joke); } if (d.t === 'oil' && !saidOnce.oil) { saidOnce.oil = 1; say('petrovich', C.CHAPTERS_DATA[8].joke); } if (d.t === 'doc' && !saidOnce.doc) { saidOnce.doc = 1; say('alya', C.CHAPTERS_DATA[4].joke); } }
+  for (const d of decor) if (exp[idx(d.x, d.y)]) { const px = d.x * ts - ox, py = d.y * ts - oy; drawIc(d.t === 'mammoth' ? 'mammoth' : d.t === 'oil' ? 'oil' : 'doc', px + ts / 2, py + ts / 2, ts * .9); if (d.t === 'mammoth' && !saidOnce.mam) { saidOnce.mam = 1; say('petrovich', C.CHAPTERS_DATA[1].joke); } if (d.t === 'oil' && !saidOnce.oil) { saidOnce.oil = 1; say('petrovich', C.CHAPTERS_DATA[8].joke); } if (d.t === 'doc' && !saidOnce.doc) { saidOnce.doc = 1; say('alya', C.CHAPTERS_DATA[4].joke); } }
   // станции
   for (let i = 0; i <= NCH; i++) {
     const px = (bx(i) - 1) * ts - ox, py = CT * ts - oy;
@@ -751,15 +790,15 @@ function render() {
   if (fx < W) { const px = fx * ts - ox; for (let y = Math.max(SURF, y0); y <= y1; y++) { const py = y * ts - oy; cx.fillStyle = (y % 2) ? '#ffcf4a' : '#222'; cx.fillRect(px, py, ts * .25, ts); } }
   // выпавшее и контейнеры
   for (const d of S.drops) { const px = d.x * ts - ox, py = d.y * ts - oy; if (px < -ts || px > VW || py < -ts || py > VH) continue; drawOre(d.t, d.id, px, py, ts, true); }
-  for (const c of S.conts) { const px = c.x * ts - ox, py = c.y * ts - oy; cx.font = `${ts * .7}px serif`; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('🧰', px + ts / 2, py + ts / 2); }
-  for (const k of S.pins) { const x = k % W, y = (k / W) | 0, px = x * ts - ox, py = y * ts - oy; cx.font = `${ts * .45}px serif`; cx.textAlign = 'center'; cx.fillText('📍', px + ts * .8, py + ts * .25); }
+  for (const c of S.conts) { const px = c.x * ts - ox, py = c.y * ts - oy; drawIc('container', px + ts / 2, py + ts / 2, ts * .8); }
+  for (const k of S.pins) { const x = k % W, y = (k / W) | 0, px = x * ts - ox, py = y * ts - oy; drawIc('pin', px + ts * .8, py + ts * .25, ts * .45); }
   // протечка
   if (leak) {
     const r = (1 - leak.t / leak.T) * 6 + 1;
     for (let y = leak.y - 7; y <= leak.y + 7; y++) for (let x = leak.x - 7; x <= leak.x + 7; x++) { if (!inb(x, y) || grid[idx(x, y)] !== 0) continue; if (Math.abs(x - leak.x) + Math.abs(y - leak.y) <= r) { cx.fillStyle = 'rgba(60,150,255,.38)'; cx.fillRect(x * ts - ox, y * ts - oy + ts * (.15 + Math.sin(time * 4 + x) * .05), st, ts * .85); } }
     const px = leak.px * ts - ox, py = leak.py * ts - oy, pulse = 1 + Math.sin(time * 8) * .12;
     cx.strokeStyle = '#7fd0ff'; cx.lineWidth = 3; cx.beginPath(); cx.arc(px + ts / 2, py + ts / 2, ts * .55 * pulse, 0, 7); cx.stroke();
-    cx.font = `${ts * .6}px serif`; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('🚰', px + ts / 2, py + ts / 2);
+    drawIc('pump', px + ts / 2, py + ts / 2, ts * .75);
   }
   // машина
   drawMachine(ts, ox, oy);
@@ -789,9 +828,9 @@ function drawSurface(ts, ox, oy) {
   cx.fillStyle = 'rgba(255,255,255,.18)';
   for (let x = Math.floor(ox / 40) * 40; x < ox + VW; x += 40) { const px = x - ox; cx.fillRect(px + Math.sin(time + x) * 6, seaTop + ts * .55, 18, 2); }
   // льдины
-  for (let i = 0; i < 14; i++) { const wx = ((i * 173.3 + time * (6 + i % 3 * 3)) % (W * ts)); const px = wx - ox; if (px < -80 || px > VW + 80) continue; cx.fillStyle = '#f4fbff'; cx.beginPath(); cx.moveTo(px, seaTop + ts * .55); cx.lineTo(px + 34 + i % 3 * 10, seaTop + ts * .55); cx.lineTo(px + 28 + i % 3 * 10, seaTop + ts * .8); cx.lineTo(px + 6, seaTop + ts * .8); cx.fill(); if (i % 5 === 0) { cx.font = `${ts * .5}px serif`; cx.textAlign = 'left'; cx.fillText(i % 10 === 0 ? '🦭' : '🐻‍❄️', px + 8, seaTop + ts * .45); } }
+  for (let i = 0; i < 14; i++) { const wx = ((i * 173.3 + time * (6 + i % 3 * 3)) % (W * ts)); const px = wx - ox; if (px < -80 || px > VW + 80) continue; cx.fillStyle = '#f4fbff'; cx.beginPath(); cx.moveTo(px, seaTop + ts * .55); cx.lineTo(px + 34 + i % 3 * 10, seaTop + ts * .55); cx.lineTo(px + 28 + i % 3 * 10, seaTop + ts * .8); cx.lineTo(px + 6, seaTop + ts * .8); cx.fill(); if (i % 5 === 0) drawIc(i % 10 === 0 ? 'walrus' : 'bear', px + 22, seaTop + ts * .25, ts * .7); }
   // корабль
-  const sx = ((time * 20) % (W * ts + 400)) - 200 - ox; cx.font = `${ts * .8}px serif`; cx.fillText('🚢', sx, seaTop + ts * .4);
+  const sx = ((time * 20) % (W * ts + 400)) - 200 - ox; drawIc('ship', sx, seaTop + ts * .15, ts * 1.1);
   // подписи
   cx.fillStyle = 'rgba(255,255,255,.85)'; cx.font = `bold ${Math.round(ts * .32)}px sans-serif`; cx.textAlign = 'center';
   cx.fillText('Берингов пролив', (bx(2)) * ts - ox, seaTop + ts * 1.7);
@@ -850,7 +889,7 @@ function drawMachine(ts, ox, oy) {
   if (S.shop.cat) {
     cx.save(); cx.translate(px - ts * .08, py - ts * .34 + Math.sin(time * 3) * 1.2); if (d === 'l') cx.scale(-1, 1);
     if (ok(IMG.cat_sit)) { const cw = ts * .55, ch = cw * IMG.cat_sit.naturalHeight / IMG.cat_sit.naturalWidth; cx.drawImage(IMG.cat_sit, -cw / 2, -ch, cw, ch); }
-    else { cx.font = `${ts * .55}px serif`; cx.textAlign = 'center'; cx.textBaseline = 'bottom'; cx.fillText('🐈', 0, 0); }
+
     cx.restore();
   }
   if (S.shop.skin_gold && Math.random() < .3) particles.push({ x: M.rx + .5 + rnd(-.4, .4), y: M.ry + .5 + rnd(-.3, .3), vx: rnd(-.5, .5), vy: rnd(-1.5, -.5), life: .5, c: '#ffe27a' });
@@ -893,9 +932,9 @@ function drawScan(ts, ox, oy) {
     const px = it.x * ts - ox + ts / 2, py = it.y * ts - oy + ts / 2;
     const onScreen = px > 10 && px < VW - 10 && py > 90 && py < VH - 10;
     if (lvl >= 2 && onScreen) {
-      cx.globalAlpha = a; cx.font = `${ts * .55}px serif`; cx.textAlign = 'center'; cx.textBaseline = 'middle';
-      const ic = it.gas ? '☁️' : lvl >= 3 ? ({ 3: '🟡', 4: '💎', 5: '💗', 6: '📦' })[it.t] : (it.t >= 4 ? '✨' : '•');
-      cx.fillText(ic, px, py + Math.sin(time * 6 + px) * 2); cx.globalAlpha = 1;
+      cx.globalAlpha = a;
+      const ic = it.gas ? 'gas' : lvl >= 3 ? ({ 3: 'gold', 4: 'diamond', 5: 'pinkgem', 6: 'chest' })[it.t] : (it.t >= 4 ? 'diamond' : 'gold');
+      drawIc(ic, px, py + Math.sin(time * 6 + px) * 2, ts * .6); cx.globalAlpha = 1;
     } else if (!it.gas) {
       const ang = Math.atan2(py - (my * ts - oy), px - (mx * ts - ox));
       const cxp = mx * ts - ox, cyp = my * ts - oy, rr = ts * 1.4;
