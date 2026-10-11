@@ -538,6 +538,10 @@ function achieve(id) {
 }
 
 const CAT_LINES = ['Мяу. (Перевод: «где моя миска?».)', 'Мур. Я проверил грунт — тёплый, можно спать.', 'Мяу! Там алмаз. Или мышь. Копай, разберёмся.', 'Кот-прораб одобряет этот тоннель. Подпись: лапа.', 'Мяу. Корм прислали в фунтах. Пересчитываю в граммы.'];
+let oreTipT = 0;
+function showOreTip() { S.tut.oreTip = true; dirty = true; oreTipT = 10; $('oreTip').classList.remove('off'); haptic('light'); SFX.pick(); track('tip_ore'); }
+function hideOreTip() { oreTipT = 0; $('oreTip').classList.add('off'); }
+$('oreTip').addEventListener('click', hideOreTip);
 // ---------- Обновление ----------
 let lastT = performance.now(), sayTimer = 0;
 function update(dt) {
@@ -617,6 +621,9 @@ function update(dt) {
   // амбиент-реплики
   if (run && S.set.jokes) { ambientT -= dt; if (ambientT <= 0) { ambientT = rnd(80, 130); if (S.shop.cat && Math.random() < .4) say('cat', CAT_LINES[(Math.random() * CAT_LINES.length) | 0]); else say(Math.random() < .5 ? 'petrovich' : 'alya', C.JOKES.ambient[(Math.random() * C.JOKES.ambient.length) | 0]); } }
   if (S.coins >= 1000) achieve('budget');
+  // подсказка про ответвления: один раз, после первых метров тоннеля
+  if (!S.tut.oreTip && run && !paused && (M.x >= bx(0) + 5 || S.stats.playTime > 25)) showOreTip();
+  if (oreTipT > 0) { oreTipT -= dt; if (oreTipT <= 0) hideOreTip(); }
   // визуальная позиция
   if (M.st === 'move' || M.st === 'fall') { const t = Math.min(M.t, 1); M.rx = M.fx + (M.x - M.fx) * t; M.ry = M.fy + (M.y - M.fy) * t; }
   else { M.rx = M.x; M.ry = M.y; }
@@ -697,6 +704,11 @@ function render() {
   }
   // машина
   drawMachine(ts, ox, oy);
+  if (oreTipT > 0) {
+    const mx = M.rx * ts - ox + ts / 2, my = M.ry * ts - oy + ts / 2, b = Math.sin(time * 6) * ts * .12;
+    cx.font = `bold ${ts * .7}px sans-serif`; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillStyle = '#ffcf4a';
+    cx.shadowColor = '#000'; cx.shadowBlur = 6; cx.fillText('▲', mx, my - ts * 1.25 - b); cx.fillText('▼', mx, my + ts * 1.25 + b); cx.shadowBlur = 0;
+  }
   for (const p of particles) { cx.fillStyle = p.c; cx.fillRect(p.x * ts - ox - 2, p.y * ts - oy - 2, 4, 4); }
   // свет
   drawLight(ts, ox, oy);

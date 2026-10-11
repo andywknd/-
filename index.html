@@ -103,6 +103,14 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 #tapHint .hand{position:absolute;left:14px;top:30px;font-size:44px;animation:swipe 1.6s infinite;filter:drop-shadow(0 3px 4px rgba(0,0,0,.6))}
 #tapHint .txt{font-weight:800;font-size:15px;color:#fff;text-shadow:0 2px 4px #000;margin-top:14px;max-width:240px;line-height:1.3}
 #tapHint .txt small{display:block;font-weight:600;font-size:12px;color:#ffd27a}
+#oreTip{position:fixed;left:12px;right:12px;bottom:calc(var(--sab) + 16px);z-index:9;display:flex;gap:12px;align-items:center;background:rgba(10,24,34,.94);border:2px solid #ffcf4a;border-radius:16px;padding:11px 13px;box-shadow:0 10px 30px rgba(0,0,0,.5);transition:opacity .4s,transform .4s;pointer-events:none}
+#oreTip.off{opacity:0;transform:translateY(16px);pointer-events:none}
+#oreTip .ud{display:flex;flex-direction:column;align-items:center;font-size:22px;line-height:1.05;flex:none;width:40px}
+#oreTip .ud .a{animation:upd 1s infinite}#oreTip .ud .b{animation:dnd 1s infinite}
+@keyframes upd{50%{transform:translateY(-5px)}}@keyframes dnd{50%{transform:translateY(5px)}}
+#oreTip .t{font-size:13.5px;line-height:1.38;color:#e8f2f7}
+#oreTip .t b{display:block;font-size:15.5px;color:#ffcf4a;margin-bottom:2px}
+#oreTip .flow{display:block;margin-top:5px;font-weight:700;color:#9fe7b8;font-size:12.5px}
 @keyframes swipe{0%{transform:translateX(0) scale(1.15);opacity:0}12%{opacity:1;transform:translateX(0) scale(1)}70%{transform:translateX(100px) scale(1);opacity:1}100%{transform:translateX(100px) scale(1);opacity:0}}
 @keyframes arr{0%,12%{opacity:0;clip-path:inset(0 100% 0 0)}70%{opacity:1;clip-path:inset(0 0 0 0)}100%{opacity:0}}
 #title .logo h1{margin:0;font-size:clamp(30px,10vw,52px);line-height:.95;font-weight:900;letter-spacing:.5px;color:#fff;text-shadow:0 3px 0 #0f2a3a,0 0 18px rgba(0,0,0,.55);-webkit-text-stroke:1.5px #0f2a3a;text-transform:uppercase}
@@ -182,6 +190,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 
 <div id="chapterBanner" style="opacity:0"><div class="k"></div><div class="t"></div></div>
 <div id="floaters"></div>
+<div id="oreTip" class="off"><div class="ud"><span class="a">⬆️</span><span>💎</span><span>🟡</span><span class="b">⬇️</span></div><div class="t"><b>Сверни с коридора — там сокровища!</b>Копай вверх и вниз: в породе прячутся железо, медь, золото и алмазы. Довези их на базу: железо и медь идут на постройку тоннеля, остальное продаётся.<span class="flow">Добыча → база → монеты → улучшения бура и бака</span></div></div>
 <div id="toast" class="off"></div>
 
 <!-- Титульный экран -->
@@ -209,6 +218,6 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 
 <script src="config.js?v=4"></script>
 <script src="shop-links.js?v=4"></script>
-<script src="game.js?v=4"></script>
+<script src="game.js?v=5"></script>
 </body>
 </html>
