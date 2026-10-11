@@ -143,7 +143,7 @@ const defaultState = () => ({
   stats: { diamonds: 0, accidents: 0, sorties: 0, delivered: 0, earned: 0, playTime: 0, distract: 0, started: Date.now(), finishedAt: 0, maxDepth: 0, segEvac: 0 },
   set: { sound: true, jokes: true, vibro: true, calm: false },
   tut: { intro: false, firstOre: false, back: false, returned: false, scan: false, upgr: false },
-  proto: false, done: false, t: 0, chIntro: -1, completions: 0, shop: {}, turboUntil: 0, buys: 0, refs: { n: 0, tokens: 0, big: false },
+  proto: false, done: false, t: 0, chIntro: -1, completions: 0, shop: {}, turboUntil: 0, buys: 0, refs: { n: 0, tokens: 0, big: false }, tr: { t: 0, got: [] },
 });
 
 const upv = k => C.UPGRADES[k].vals[S.up[k] - 1];
@@ -313,7 +313,7 @@ function drawIc(n, x, y, size) {
   if (!ok(im)) return; const w = size, h = size * im.naturalHeight / im.naturalWidth;
   cx.drawImage(im, x - w / 2, y - h / 2, w, h);
 }
-const EMO = { '🌊': 'pump', '🪙': 'coin', '💰': 'coin', '⛽': 'fuel', '📦': 'cargo', '🎒': 'cargo', '🌡': 'heat', '🛡': 'hull', '🪨': 'iron', '🟠': 'copper', '🟡': 'gold',
+const EMO = { '🧭': 'trmap', '🌊': 'pump', '🪙': 'coin', '💰': 'coin', '⛽': 'fuel', '📦': 'cargo', '🎒': 'cargo', '🌡': 'heat', '🛡': 'hull', '🪨': 'iron', '🟠': 'copper', '🟡': 'gold',
   '💎': 'diamond', '✨': 'diamond', '💗': 'pinkgem', '🏁': 'flag', '🎯': 'flag', '🏔': 'mountain', '👥': 'friends', '🙂': 'friends', '🎁': 'gift', '🎟': 'ticket',
   '📨': 'envelope', '⚙': 'gear', '🏠': 'gear', '⭐': 'star', '🔧': 'repair', '❄': 'coolant', '🚰': 'pump', '🧰': 'container', '📍': 'pin', '☁': 'gas',
   '🦣': 'mammoth', '🛢': 'oil', '📄': 'doc', '📋': 'doc', '⛏': 'pickaxe', '👆': 'hand', '🏆': 'trophy', '📣': 'megaphone', '📲': 'megaphone', '⚡': 'bolt',
@@ -577,6 +577,7 @@ function arrive() {
   // подбор
   for (let i = S.drops.length - 1; i >= 0; i--) { const d = S.drops[i]; if (d.x === M.x && d.y === M.y && S.cargo.length < cargoMax()) { S.cargo.push({ t: d.t, id: d.id }); S.drops.splice(i, 1); floater(M.x, M.y, '+' + C.ORES[d.t].name, '#fff'); SFX.pick(); } }
   for (let i = S.conts.length - 1; i >= 0; i--) { const c = S.conts[i]; if (c.x === M.x && c.y === M.y) { while (c.items.length && S.cargo.length < cargoMax()) S.cargo.push(c.items.pop()); if (!c.items.length) { S.conts.splice(i, 1); floater(M.x, M.y, 'Контейнер подобран', '#7fe9ff'); SFX.gem(); } } }
+  trCheck();
   if (leak && M.x === leak.px && M.y === leak.py) {
     leak = null; S.coins += 40; floater(M.x, M.y, 'Помпа включена! +40', '#7fd0ff'); SFX.build(); haptic('success');
     questDone('leak'); achieve('noleak'); say('alya', 'Откачали! Тоннель снова тоннель, а не аквапарк.', true);
@@ -610,6 +611,79 @@ function respawnOres() {
     }
   }
   return n;
+}
+// ---------- Бесконечный режим: три древних сокровища, разбитых на осколки ----------
+const TREASURES = [
+  { id: 'amber', name: 'Янтарный мамонт', piece: 'осколок янтаря', reward: 1500, text: 'Древний янтарь с крошечным мамонтом внутри. Ему около сорока тысяч лет — он старше любой сметы.' },
+  { id: 'compass', name: 'Компас первопроходцев', piece: 'деталь компаса', reward: 2500, text: 'Старинный компас из семи деталей. Говорят, он всегда показывает на ближайший обед.' },
+  { id: 'meteor', name: 'Звёздный метеорит', piece: 'кристалл метеорита', reward: 4000, text: 'Упал сюда задолго до первого бура. Светится, когда рядом кто-то копает.' },
+];
+const TR_N = 7;
+const trOn = () => S.done && S.tr && S.tr.t < TREASURES.length;
+let trCache = null;
+function trPieces() {
+  const t = S.tr.t; if (trCache && trCache.t === t && trCache.seed === S.seed && trCache.W === W) return trCache.p;
+  const R = mulberry((S.seed ^ ((t + 1) * 40503)) | 0), L = bx(NCH) - bx(0), p = [];
+  for (let j = 0; j < TR_N; j++) {
+    // по всей длине пролива и очень глубоко (каждое следующее сокровище — ещё глубже)
+    let x = clamp(Math.round(bx(0) + (j + .15 + R() * .7) / TR_N * L), 4, W - 5);
+    let y = H - 3 - Math.floor(R() * Math.max(2, 10 - t * 3));
+    if (baseAt[idx(x, y)] >= 0) x += 3;
+    p.push({ x, y });
+  }
+  trCache = { t, seed: S.seed, W, p }; return p;
+}
+function trLeft() { const got = S.tr.got; return trPieces().map((q, j) => ({ ...q, j })).filter(q => got.indexOf(q.j) < 0); }
+function trNearest() { let best = null, bd = 1e9; for (const q of trLeft()) { const d = Math.hypot(q.x - M.x, q.y - M.y); if (d < bd) { bd = d; best = q; } } return best ? { q: best, d: Math.round(bd) } : null; }
+function trCheck() {
+  if (!trOn()) return;
+  const q = trLeft().find(q => q.x === M.x && q.y === M.y); if (!q) return;
+  const T = TREASURES[S.tr.t]; S.tr.got.push(q.j); dirty = true; save(true);
+  SFX.gem(); haptic('success'); track('tr_piece', { t: S.tr.t, n: S.tr.got.length });
+  floater(M.x, M.y, `${T.piece} ${S.tr.got.length}/${TR_N}`, '#ffd84a');
+  if (S.tr.got.length >= TR_N) setTimeout(trComplete, 700);
+  else if (S.tr.got.length === 1) say('alya', `Первый ${T.piece}! Осталось ${TR_N - 1}. Стрелка у буровой покажет следующий.`, true);
+  else if (S.tr.got.length === TR_N - 1) say('petrovich', 'Последний остался! Где-то совсем глубоко…', true);
+}
+function trComplete() {
+  const T = TREASURES[S.tr.t]; S.coins += T.reward; S.coll.tr = S.coll.tr || []; if (S.coll.tr.indexOf(T.id) < 0) S.coll.tr.push(T.id);
+  track('tr_done', { t: S.tr.t }); S.tr = { t: S.tr.t + 1, got: [] }; trCache = null; dirty = true; save(true);
+  const next = TREASURES[S.tr.t];
+  modal(`<div style="text-align:center"><img src="assets/i/tr_${T.id}.webp" alt="" style="width:120px;height:120px;object-fit:contain;filter:drop-shadow(0 0 18px rgba(255,210,90,.6))"></div>
+    <h2 style="text-align:center">Сокровище собрано: «${T.name}»!</h2><p style="text-align:center">${T.text}</p>
+    <p style="text-align:center;font-size:20px;font-weight:900;color:#ffcf4a">+${T.reward} 🪙</p>
+    <p style="text-align:center;color:#9db4c2;font-size:13px">${next ? `Следующее: «${next.name}» — его осколки спрятаны ещё глубже.` : 'Это было последнее сокровище Берингова пролива. Ты нашёл всё!'}</p>`,
+    [{ t: '📣 Похвастаться', cls: 'btn good', fn: () => { paused = false; shareChat('treasure'); } }, { t: next ? 'Искать дальше' : 'Ура!', cls: 'btn' }]);
+}
+function drawTreasure(ts, ox, oy) {
+  if (!trOn()) return;
+  const T = TREASURES[S.tr.t], pulse = 1 + Math.sin(time * 4) * .08;
+  for (const q of trLeft()) {
+    if (!exp[idx(q.x, q.y)]) continue;
+    const px = q.x * ts - ox + ts / 2, py = q.y * ts - oy + ts / 2; if (px < -ts || px > VW + ts || py < -ts || py > VH + ts) continue;
+    cx.save(); cx.shadowColor = '#ffd84a'; cx.shadowBlur = 16; drawIc('tr_' + T.id + '_f', px, py, ts * .8 * pulse); cx.restore();
+  }
+  if (atBase >= 0 && M.st !== 'idle') return;
+  const n = trNearest(); if (!n) return;
+  const mx = M.rx * ts - ox + ts / 2, my = M.ry * ts - oy + ts / 2;
+  const ang = Math.atan2(n.q.y - M.ry, n.q.x - M.rx), r = ts * 1.35;
+  const ax = mx + Math.cos(ang) * r, ay = my + Math.sin(ang) * r;
+  cx.save(); cx.translate(ax, ay); cx.rotate(ang); cx.globalAlpha = .9;
+  const im = IMG['i/trarrow']; if (ok(im)) { const w = ts * .75, h = w * im.naturalHeight / im.naturalWidth; cx.drawImage(im, -w * .3, -h / 2, w, h); }
+  cx.restore();
+  cx.font = `900 ${Math.round(ts * .3)}px sans-serif`; cx.textAlign = 'center'; cx.fillStyle = '#ffd84a'; cx.strokeStyle = 'rgba(0,0,0,.75)'; cx.lineWidth = 3;
+  const tx = mx + Math.cos(ang) * (r + ts * .55), ty = my + Math.sin(ang) * (r + ts * .55) + 4;
+  cx.strokeText(n.d + ' кл', tx, ty); cx.fillText(n.d + ' кл', tx, ty);
+}
+function trCard() {
+  if (!trOn()) return `<div class="goal" style="margin-top:12px"><div class="trh">🏆 Все сокровища Берингова пролива найдены!</div><div class="trall">${TREASURES.map(T => `<img src="assets/i/tr_${T.id}.webp" alt="">`).join('')}</div>${routeBar()}<button class="btn good wide big" id="goBtn">Копать дальше →</button></div>`;
+  const T = TREASURES[S.tr.t], got = S.tr.got.length, n = trNearest();
+  const slots = Array.from({ length: TR_N }, (_, j) => `<img class="${S.tr.got.indexOf(j) >= 0 ? 'on' : ''}" src="assets/i/tr_${T.id}_f.webp" alt="">`).join('');
+  return `<div class="goal" style="margin-top:12px"><div class="trtop"><img src="assets/i/tr_${T.id}.webp" alt=""><div><div class="trh">Сокровище ${S.tr.t + 1}/${TREASURES.length}: «${T.name}»</div><div class="trs">Собрано осколков: <b>${got}/${TR_N}</b> · награда <b>${T.reward} 🪙</b></div></div></div>
+    <div class="trslots">${slots}</div>
+    <div class="gnext">Осколки спрятаны очень глубоко и по всей длине пролива.${n ? ` До ближайшего: <b>${n.d} кл.</b>` : ''}</div>
+    <button class="btn good wide big" id="goBtn">Искать сокровище →</button>
+    <div class="bonus">Золотая стрелка у буровой всегда показывает на ближайший осколок</div></div>`;
 }
 function onArriveBase(b, evac, noOpen) {
   if (S.built >= NCH && S.done && !evac) respawnOres();
@@ -889,6 +963,7 @@ function render() {
   // забор
   if (fx < W) { const px = fx * ts - ox; for (let y = Math.max(SURF, y0); y <= y1; y++) { const py = y * ts - oy; cx.fillStyle = (y % 2) ? '#ffcf4a' : '#222'; cx.fillRect(px, py, ts * .25, ts); } }
   // выпавшее и контейнеры
+  drawTreasure(ts, ox, oy);
   for (const d of S.drops) { const px = d.x * ts - ox, py = d.y * ts - oy; if (px < -ts || px > VW || py < -ts || py > VH) continue; drawOre(d.t, d.id, px, py, ts, true); }
   for (const c of S.conts) { const px = c.x * ts - ox, py = c.y * ts - oy; drawIc('container', px + ts / 2, py + ts / 2, ts * .8); }
   for (const k of S.pins) { const x = k % W, y = (k / W) | 0, px = x * ts - ox, py = y * ts - oy; drawIc('pin', px + ts * .8, py + ts * .25, ts * .45); }
@@ -1093,6 +1168,7 @@ function hud(dt) {
   else if (fuelLow) w = `⛽ Пора на базу: нужно ≈${Math.ceil(need)} л`;
   else if (S.cargo.length >= cargoMax() && atBase < 0) w = '📦 Отсек полон — вези на базу';
   else if (S.turboUntil > S.stats.playTime) w = `⚡ Турбо-смена: ещё ${Math.ceil(S.turboUntil - S.stats.playTime)} с`;
+  else if (trOn() && atBase < 0) { const n = trNearest(); w = n ? `🧭 «${TREASURES[S.tr.t].name}»: ${S.tr.got.length}/${TR_N} · до осколка ${n.d} кл.` : ''; }
   else if (S.built < NCH) w = atBase >= 0 ? '' : `🎯 До «${stationName(S.built + 1)}» — ${segGap} ${cellsWord(segGap)} →`;
   if (w !== warnState) { warnState = w; $('warnline').textContent = w; if (w.startsWith('⛽') || w.startsWith('🚰') || w.startsWith('🛡')) { SFX.warn(); haptic('warning'); } }
   $('baseBtn').classList.toggle('hidden', !(atBase >= 0 && M.st === 'idle'));
@@ -1266,7 +1342,7 @@ function openBase() {
       <div class="gnext">До следующей станции: <b>${segGap} ${cellsWord(segGap)}</b> вправо</div>
       <button class="btn good wide big" id="goBtn">Продолжить тоннель →</button>
       <div class="bonus">Руда и алмазы дают монеты для улучшений</div></div>`;
-  } else h += `<div class="goal" style="margin-top:12px">${routeBar()}<div class="gnext"><b>Бесконечный режим</b> — копай где хочешь, руда появляется снова</div><button class="btn good wide big" id="goBtn">Копать дальше →</button></div>`;
+  } else h += trCard();
   // 4) Расходники — открыто
   const cons = ['can', 'rep', 'cool'].filter(k => F.cons(k));
   const CONS_IC = { can: 'fuel', rep: 'repair', cool: 'coolant' };
@@ -1444,6 +1520,8 @@ function openCollection() {
     C.COLORED.map((c, i) => { const has = S.coll.colored.indexOf(i) >= 0; const col = c.color === 'rainbow' ? '#fff' : c.color; return `<div class="cell ${has ? '' : 'lock'}"><div class="ic"><div class="gem" style="background:${has ? (c.color === 'rainbow' ? 'linear-gradient(45deg,#f55,#fd5,#5f8,#58f,#d5f)' : col) : '#333'};color:${col}"></div></div>${has ? c.name : 'Глава ' + (i + 1) + ', глубоко'}</div>`; }).join('') + `</div></div>`;
   h += `<div class="sec"><h3><span>📦 Артефакты</span><span>${S.coll.art.length}/${C.ARTIFACTS.length}</span></h3>` +
     C.ARTIFACTS.map((a, i) => { const has = S.coll.art.indexOf(i) >= 0; return `<div class="row"><span class="grow">${has ? '<b>' + a.name + '</b><div class="sub">' + a.text + '</div>' : '<span class="sub">??? — секретная полость</span>'}</span></div>`; }).join('') + `</div>`;
+  const trs = S.coll.tr || [];
+  h += `<div class="sec"><h3><span>🧭 Сокровища пролива</span><span>${trs.length}/${TREASURES.length}</span></h3>` + TREASURES.map(T => { const has = trs.indexOf(T.id) >= 0; return `<div class="row"><img src="assets/i/tr_${T.id}.webp" alt="" style="width:44px;height:44px;object-fit:contain;flex:none;${has ? '' : 'filter:grayscale(1) brightness(.4)'}"><span class="grow">${has ? '<b>' + T.name + '</b><div class="sub">' + T.text + '</div>' : '<span class="sub">??? — откроется в бесконечном режиме после финала</span>'}</span></div>`; }).join('') + `</div>`;
   h += `<div class="sec"><h3><span>🏆 Достижения</span><span>${S.ach.length}/${Object.keys(C.ACH).length}</span></h3>` +
     Object.entries(C.ACH).map(([k, a]) => `<div class="row"><span class="grow">${S.ach.indexOf(k) >= 0 ? '🏆 <b>' + a.name + '</b>' : '🔒 ' + a.name}<div class="sub">${a.desc}</div></span></div>`).join('') + `</div>`;
   openSheet('Коллекция', h);
@@ -1562,7 +1640,7 @@ function finale() {
     const mins = Math.round(S.stats.playTime / 60);
     $('finBody').innerHTML = `<div class="fhead"><img src="assets/fin/medal.webp" alt=""><div><h2>Тоннель до Америки проложен!</h2><p>Чукотка и Аляска соединены. По тоннелю уже поехали первые машины.</p></div></div>
       <div class="frew"><img src="assets/drill_legend.webp" alt=""><div><b>Эксклюзив: легендарный бур</b><span>Радужный алмазный бур — только у тех, кто дошёл до конца. Копает мощнее любого другого.</span></div></div>
-      <div class="frew"><img src="assets/fin/infinity.webp" alt=""><div><b>Бесконечный режим открыт</b><span>Без уровней и стен: копай где хочешь — руда и алмазы появляются снова после каждого возвращения на базу.</span></div></div>
+      <div class="frew"><img src="assets/fin/infinity.webp" alt=""><div><b>Бесконечный режим открыт</b><span>Без уровней и стен. Под проливом спрятаны три древних сокровища, разбитых на осколки, — найди их все. Руда и алмазы появляются снова.</span></div></div>
       <div class="fstats"><div><b>${mins}</b><span>минут</span></div><div><b>${S.stats.diamonds}</b><span>алмазов</span></div><div><b>${S.stats.delivered}</b><span>находок</span></div><div><b>${S.stats.accidents}</b><span>аварий</span></div></div>
       <div class="ftitle">Звание: <b>${titleFor()}</b></div>
       <button class="btn good wide big" id="fin-share">📣 Рассказать друзьям</button>
@@ -1570,13 +1648,13 @@ function finale() {
       <button class="btn wide" id="fin-cont"><img class="bi" src="assets/fin/infinity.webp" alt="">Копать бесконечно</button>
       <button class="btn sec2 wide sm2" id="fin-new">Начать новую кампанию</button>`;
     $('fin-share').onclick = () => shareChat('finale');
-    $('fin-cont').onclick = () => { f.classList.add('hidden'); showGame(); paused = false; toast('<img class="ic" src="assets/fin/infinity.webp"> Бесконечный режим: копай где хочешь!'); };
+    $('fin-cont').onclick = () => { f.classList.add('hidden'); showGame(); paused = false; setTimeout(() => dialog([['alya', 'Пока копали, сканер поймал странный сигнал. Глубоко под проливом лежат осколки древнего сокровища — «Янтарного мамонта».'], ['petrovich', 'Семь осколков, разбросаны от Чукотки до Аляски у самого дна. Золотая стрелка у буровой покажет ближайший. Найдёшь все — премия!']]), 300); };
     $('fin-new').onclick = () => newCampaign();
   });
 }
 let finT = 0, finCars = [], finFx = [];
 const FIN_CARS = ['truck', 'bus', 'car', 'loco', 'car', 'truck'];
-['finale_bg', 'drill_legend', 'fin/truck', 'fin/bus', 'fin/car', 'fin/loco', 'fin/firework'].forEach(n => { if (!IMG[n]) { const i = new Image(); i.src = 'assets/' + n + '.webp'; IMG[n] = i; } });
+['i/trarrow', 'finale_bg', 'drill_legend', 'fin/truck', 'fin/bus', 'fin/car', 'fin/loco', 'fin/firework'].forEach(n => { if (!IMG[n]) { const i = new Image(); i.src = 'assets/' + n + '.webp'; IMG[n] = i; } });
 function renderFinale(dt) {
   finT += dt; const c = $('finc'); const w = c.clientWidth; if (!w) return;
   const h = Math.round(Math.min(w * .78, window.innerHeight * .42)); if (c.style.height !== h + 'px') c.style.height = h + 'px';
@@ -1707,6 +1785,6 @@ function boot() {
   });
 }
 boot();
-window.__dig = { get S() { return S; }, M, banner, flood, onArriveBase, respawnOres, bx, get W() { return W; }, segPath, teleport, buildSegment, fenceX, openBase, showDrillOffer,
+window.__dig = { get S() { return S; }, M, trPieces, trCheck, banner, flood, onArriveBase, respawnOres, bx, get W() { return W; }, segPath, teleport, buildSegment, fenceX, openBase, showDrillOffer,
   digRow: (x0, x1, y) => { for (let x = x0; x <= x1; x++) { const k = idx(x, y); if (grid[k] < 6) { grid[k] = 0; dug[k] = 1; exp[k] = 1; } } computeDist(); }, bx, finale };
 })();
