@@ -247,7 +247,7 @@ function haptic(kind) {
 
 // ---------- Ассеты ----------
 const IMG = {};
-['drill', 'station', 'petrovich', 'alya', 'bob', 'billionaire', 'train'].forEach(n => {
+['drill', 'station', 'petrovich', 'alya', 'bob', 'billionaire', 'train', 'drill_gold', 'cat_sit', 'i_tank', 'i_rocket', 'i_ins'].forEach(n => {
   const i = new Image(); i.src = 'assets/' + n + '.webp'; IMG[n] = i;
 });
 const ok = i => i && i.complete && i.naturalWidth > 0;
@@ -737,8 +737,8 @@ function drawMachine(ts, ox, oy) {
   cx.rotate(rot); cx.scale(flip, 1);
   const s = ts * 1.22;
   if (S.heat > 75) { cx.shadowColor = '#ff4a1a'; cx.shadowBlur = 14 + Math.sin(time * 12) * 6; }
-  const spr = S.shop.skin_gold ? goldSprite() : IMG.drill;
-  if (ok(IMG.drill)) { const dh = s * IMG.drill.naturalHeight / IMG.drill.naturalWidth; cx.drawImage(spr, -s / 2, -dh / 2 - ts * .02, s, dh); }
+  const spr = S.shop.skin_gold ? (ok(IMG.drill_gold) ? IMG.drill_gold : goldSprite()) : IMG.drill;
+  if (ok(IMG.drill)) { const sw = spr.naturalWidth || spr.width, sh = spr.naturalHeight || spr.height; const dh = s * sh / sw; cx.drawImage(spr, -s / 2, -dh / 2 - ts * .02, s, dh); }
   else { cx.fillStyle = '#ff9d2e'; cx.fillRect(-ts * .4, -ts * .3, ts * .6, ts * .6); cx.fillStyle = '#aaa'; cx.beginPath(); cx.moveTo(ts * .2, -ts * .3); cx.lineTo(ts * .5, 0); cx.lineTo(ts * .2, ts * .3); cx.fill(); }
   cx.shadowBlur = 0;
   // улучшения видны на машине
@@ -748,8 +748,20 @@ function drawMachine(ts, ox, oy) {
   if (S.up.cooling >= 3) { cx.fillStyle = '#7fd0ff'; cx.fillRect(-s * .25, -s * .38, s * .18, s * .05); }
   if (S.up.scanner >= 3) { cx.strokeStyle = '#9ff'; cx.lineWidth = 2; cx.beginPath(); cx.moveTo(-s * .05, -s * .3); cx.lineTo(-s * .05, -s * .48); cx.stroke(); cx.fillStyle = '#9ff'; cx.beginPath(); cx.arc(-s * .05, -s * .5, 3, 0, 7); cx.fill(); }
   if (S.up.hull >= 3) { cx.strokeStyle = 'rgba(200,210,220,.9)'; cx.lineWidth = 2; cx.strokeRect(-s * .38, -s * .08, s * .45, s * .2); }
+  if (S.shop.tank_plus && ok(IMG.i_tank)) { const th = s * .34, tw2 = th * IMG.i_tank.naturalWidth / IMG.i_tank.naturalHeight; cx.drawImage(IMG.i_tank, -s * .5 - tw2 * .6, -th * .75, tw2, th); }
+  if (S.shop.insurance && ok(IMG.i_ins)) cx.drawImage(IMG.i_ins, -s * .14, s * .0, s * .16, s * .16);
+  if (S.shop.lift && ok(IMG.i_rocket)) {
+    const climbing = M.st === 'move' && M.y < M.fy;
+    if (climbing) { cx.fillStyle = `rgba(255,${150 + Math.random() * 80 | 0},40,.9)`; cx.beginPath(); cx.moveTo(-s * .58, -s * .13); cx.lineTo(-s * (.85 + Math.random() * .15), -s * .06); cx.lineTo(-s * .58, s * .01); cx.fill(); }
+    const rw = s * .3, rh = rw * IMG.i_rocket.naturalHeight / IMG.i_rocket.naturalWidth; cx.drawImage(IMG.i_rocket, -s * .62, -s * .36, rw, rh);
+  }
   cx.restore();
-  if (S.shop.cat) { cx.font = `${ts * .55}px serif`; cx.textAlign = 'center'; cx.textBaseline = 'bottom'; cx.save(); cx.translate(px - ts * .12, py - ts * .32 + Math.sin(time * 3) * 1.5); if (d === 'l') cx.scale(-1, 1); cx.fillText('🐈', 0, 0); cx.restore(); }
+  if (S.shop.cat) {
+    cx.save(); cx.translate(px - ts * .08, py - ts * .34 + Math.sin(time * 3) * 1.2); if (d === 'l') cx.scale(-1, 1);
+    if (ok(IMG.cat_sit)) { const cw = ts * .55, ch = cw * IMG.cat_sit.naturalHeight / IMG.cat_sit.naturalWidth; cx.drawImage(IMG.cat_sit, -cw / 2, -ch, cw, ch); }
+    else { cx.font = `${ts * .55}px serif`; cx.textAlign = 'center'; cx.textBaseline = 'bottom'; cx.fillText('🐈', 0, 0); }
+    cx.restore();
+  }
   if (S.shop.skin_gold && Math.random() < .3) particles.push({ x: M.rx + .5 + rnd(-.4, .4), y: M.ry + .5 + rnd(-.3, .3), vx: rnd(-.5, .5), vy: rnd(-1.5, -.5), life: .5, c: '#ffe27a' });
 }
 
@@ -1116,7 +1128,7 @@ function openShop(fromBase) {
   const items = C.SHOP.map(it => {
     const owned = !it.consumable && S.shop[it.id];
     const usedEst = it.id === 'estimate' && (S.estimateSeg === S.built || S.built >= NCH);
-    return `<div class="row"><span style="font-size:26px;width:34px;text-align:center">${it.icon}</span><span class="grow"><b>${it.name}</b><div class="sub">${it.desc}</div></span>
+    return `<div class="row"><img src="assets/shop_${it.id}.webp" alt="" style="width:52px;height:52px;object-fit:contain;flex:none;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'${it.icon}',style:'font-size:26px;width:52px;text-align:center'}))"><span class="grow"><b>${it.name}</b><div class="sub">${it.desc}</div></span>
       ${owned ? '<b class="ok">Есть ✔</b>' : `<button class="btn" data-buy="${it.id}" ${usedEst ? 'disabled' : ''}>⭐ ${it.stars}</button>`}</div>`;
   }).join('');
   openSheet('⭐ Лавка миллиардера', `<div class="sec" style="background:#2a2410;border:1px solid #6b5a1f"><div style="font-size:13.5px;line-height:1.45">Всю игру можно пройти <b>без звёзд</b>. Здесь — забавные штуки и немного ускорения для тех, кто спешит к Аляске.</div></div>
