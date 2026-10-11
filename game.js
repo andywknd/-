@@ -132,7 +132,7 @@ const defaultState = () => ({
   stats: { diamonds: 0, accidents: 0, sorties: 0, delivered: 0, earned: 0, playTime: 0, distract: 0, started: Date.now(), finishedAt: 0, maxDepth: 0, segEvac: 0 },
   set: { sound: true, jokes: true, vibro: true, calm: false },
   tut: { intro: false, firstOre: false, back: false, returned: false, scan: false, upgr: false },
-  proto: false, done: false, t: 0, chIntro: -1, completions: 0, shop: {}, turboUntil: 0, buys: 0,
+  proto: false, done: false, t: 0, chIntro: -1, completions: 0, shop: {}, turboUntil: 0, buys: 0, refs: { n: 0, tokens: 0, big: false },
 });
 
 const upv = k => C.UPGRADES[k].vals[S.up[k] - 1];
@@ -1059,12 +1059,14 @@ function openBase() {
       <button class="btn good wide big" id="goBtn">Продолжить тоннель →</button>
       <div class="bonus">💎 Руда и алмазы — бонус: сами меняются на 🪙 для улучшений</div></div>`;
   } else h += `<div class="goal"><div class="gt">🏁 Континенты соединены!</div>${routeBar()}<button class="btn good wide big" id="goBtn">Копать дальше ради алмазов</button></div>`;
+  if (refReady()) h += inviteBlock();
   // улучшения — карточки
-  h += `<div class="ups-h"><span>⚙️ Улучшения</span><b>🪙 ${Math.floor(S.coins)}</b></div><div class="ups">` + Object.keys(C.UPGRADES).filter(k => F.up(k)).map(k => {
+  const tk = S.refs.tokens;
+  h += `<div class="ups-h"><span>⚙️ Улучшения</span><b>${tk ? '🎟 ' + tk + ' · ' : ''}🪙 ${Math.floor(S.coins)}</b></div><div class="ups">` + Object.keys(C.UPGRADES).filter(k => F.up(k)).map(k => {
     const u = C.UPGRADES[k], n = S.up[k], cost = upCost(k);
     return `<div class="up"><div class="ui">${UP_ICON[k]}</div><div class="un">${u.name}</div>${pips(n)}
       <div class="uv">${cost !== null ? u.fmt(u.vals[n - 1]) + ' → <b>' + u.fmt(u.vals[n]) + '</b>' : 'максимум'}</div>
-      ${cost !== null ? `<button class="btn" data-up="${k}" ${S.coins < cost ? 'disabled' : ''}>${cost} 🪙</button>` : '<b class="ok">MAX ✔</b>'}</div>`;
+      ${cost === null ? '<b class="ok">MAX ✔</b>' : tk ? `<button class="btn good" data-free="${k}">🎟 Бесплатно</button>` : `<button class="btn" data-up="${k}" ${S.coins < cost ? 'disabled' : ''}>${cost} 🪙</button>`}</div>`;
   }).join('') + `</div>`;
   const cons = ['can', 'rep', 'cool'].filter(k => F.cons(k));
   if (cons.length) h += `<div class="ups-h"><span>🎒 С собой в вылазку</span></div><div class="cons">` + cons.map(k => { const c = C.CONSUMABLES[k]; return `<button class="btn sec2" data-cons="${k}" ${S.cons[k] >= consCap() || S.coins < c.price ? 'disabled' : ''}>${c.icon} ${S.cons[k]}/${consCap()} · ${c.price}🪙</button>`; }).join('') + `</div>`;
@@ -1092,6 +1094,54 @@ function openBase() {
     dirty = true; openBase();
   });
   body.querySelectorAll('[data-tp]').forEach(e => e.onclick = () => { teleport(+e.dataset.tp); S.lastBase = +e.dataset.tp; dirty = true; openBase(); });
+  body.querySelectorAll('[data-free]').forEach(e => e.onclick = () => {
+    const k = e.dataset.free; if (!S.refs.tokens || S.up[k] >= 5) return;
+    const fr = S.fuel / tankMax(), hr = S.hull / hullMax();
+    S.refs.tokens--; S.up[k]++; if (k === 'tank') S.fuel = fr * tankMax(); if (k === 'hull') S.hull = hr * hullMax();
+    SFX.build(); haptic('success'); track('upgrade', { k, lvl: S.up[k], free: 1 }); toast('🎟 ' + C.UPGRADES[k].name + ' → ' + S.up[k] + ' в подарок от друга!');
+    dirty = true; save(true); openBase();
+  });
+  on('inviteBtn', invite);
+  checkRefs();
+}
+
+// ---------- Друзья: 1 друг = бесплатное улучшение, 3 друга = всё +1 ----------
+function refReady() { return inTG && !!window.DIG_API && S.tut.returned && tg.initDataUnsafe && tg.initDataUnsafe.user; }
+function inviteBlock() {
+  const n = Math.min(S.refs.n, 3);
+  const slots = [0, 1, 2].map(i => `<span class="fs ${i < n ? 'on' : ''}">${i < n ? '🙂' : '➕'}</span>`).join('');
+  return `<div class="invite"><div class="ih">👥 Позови друзей — получи улучшения</div>
+    <div class="islots">${slots}<span class="ibig ${S.refs.big ? 'on' : ''}">🎁</span></div>
+    <div class="irules">1 друг = 🎟 бесплатное улучшение<br>3 друга = 🎁 всё оборудование +1 уровень</div>
+    <button class="btn wide" id="inviteBtn">📨 Пригласить друга</button>
+    <div style="text-align:center;margin-top:5px;font-size:11.5px;color:#9db4c2">Друг засчитается, когда откроет игру по твоей ссылке</div></div>`;
+}
+function invite() {
+  const uid = tg.initDataUnsafe.user.id;
+  const link = APP_LINK + '?startapp=r' + uid;
+  const text = 'Копаю тоннель от Чукотки до Аляски ⛏ Присоединяйся — посмотрим, кто докопается первым!';
+  track('invite_open');
+  try { tg.openTelegramLink('https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text)); }
+  catch (e) { copy(text + ' ' + link); }
+}
+let refCheckedAt = 0;
+function checkRefs(force) {
+  if (!refReady() || (!force && performance.now() - refCheckedAt < 60000)) return;
+  refCheckedAt = performance.now();
+  fetch(window.DIG_API + '/me', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ init: tg.initData }) })
+    .then(r => r.ok ? r.json() : null).then(d => {
+      if (!d || typeof d.refs !== 'number' || d.refs <= S.refs.n) return;
+      const add = d.refs - S.refs.n; S.refs.n = d.refs; S.refs.tokens += add;
+      SFX.gem(); haptic('success'); toast('👥 Друг присоединился! 🎟 +' + add + ' бесплатное улучшение');
+      if (S.refs.n >= 3 && !S.refs.big) {
+        S.refs.big = true;
+        Object.keys(C.UPGRADES).filter(k => F.up(k)).forEach(k => { if (S.up[k] < 5) S.up[k]++; });
+        S.fuel = tankMax(); S.hull = hullMax();
+        setTimeout(() => dialog([['petrovich', 'Трое друзей в бригаде! Вся техника получила +1 уровень. Вот это я понимаю — командная работа!']]), 600);
+      }
+      track('refs', { n: S.refs.n }); dirty = true; save(true);
+      if (atBase >= 0 && !$('sheet').classList.contains('hidden') && $('sheetTitle').textContent.indexOf('🏠') === 0) openBase();
+    }).catch(() => {});
 }
 
 // Станция открывается сама, как только до неё прокопан ход
@@ -1146,13 +1196,14 @@ $('strip').addEventListener('click', () => {
 });
 $('menuBtn').addEventListener('click', () => {
   if (!S) return;
-  openSheet('Меню', `<button class="btn wide" id="m-share">📣 Поделиться прогрессом</button>
+  openSheet('Меню', `${refReady() ? inviteBlock() : ''}<button class="btn wide" id="m-share">📣 Поделиться прогрессом</button>
     ${F.shop ? '<button class="btn sec2 wide" id="m-shop">⭐ Лавка миллиардера</button>' : ''}
     <button class="btn sec2 wide" id="m-coll">💎 Коллекция и достижения</button>
     <button class="btn sec2 wide" id="m-set">⚙️ Настройки</button>
     <button class="btn sec2 wide" id="m-sos">🚨 Застрял? Эвакуация</button>
     <button class="btn sec2 wide" id="m-title">🏠 На главный экран</button>`);
   $('m-share').onclick = () => openShare();
+  if ($('inviteBtn')) $('inviteBtn').onclick = invite;
   if ($('m-shop')) $('m-shop').onclick = () => openShop();
   $('m-coll').onclick = () => openCollection();
   $('m-set').onclick = () => openSettings();
@@ -1308,6 +1359,7 @@ function showGame() {
 $('playBtn').addEventListener('click', () => {
   audio(); showGame(); paused = false;
   if (!S.tut.moved) $('tapHint').classList.remove('hidden');
+  setTimeout(() => checkRefs(true), 4000);
   if (!S.tut.intro) { S.tut.intro = true; track('tutorial_start'); S.chIntro = 0; banner('ГЛАВА 1', C.CHAPTERS_DATA[0].title); setTimeout(() => dialog(C.CHAPTERS_DATA[0].intro), 1200); }
   else if (S.chIntro < S.built && S.built < NCH) chapterIntro();
 });

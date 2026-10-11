@@ -246,6 +246,28 @@ async def api_events(req: web.Request):
     return cors(web.Response(status=204))
 
 
+LAST_ME: dict[int, float] = {}
+
+
+async def api_me(req: web.Request):
+    if req.method == "OPTIONS":
+        return cors(web.Response(status=204))
+    try:
+        body = json.loads(await req.text())
+    except Exception:
+        return cors(web.Response(status=400))
+    user = check_init(body.get("init", ""))
+    if not user:
+        return cors(web.Response(status=403))
+    uid = int(user["id"])
+    now = time.time()
+    if now - LAST_ME.get(uid, 0) < 10:
+        return cors(web.Response(status=429))
+    LAST_ME[uid] = now
+    n = db.execute("SELECT COUNT(*) FROM players WHERE ref=? AND uid!=? AND sessions>0", (f"r{uid}", uid)).fetchone()[0]
+    return cors(web.json_response({"refs": n}))
+
+
 async def api_health(req):
     return web.json_response({"ok": True, "buffer": len(EV_BUF)})
 
@@ -254,6 +276,7 @@ async def start_api():
     app = web.Application(client_max_size=32 * 1024)
     app.router.add_route("*", "/api/e", api_events)
     app.router.add_get("/api/health", api_health)
+    app.router.add_route("*", "/api/me", api_me)
     runner = web.AppRunner(app, access_log=None)
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", API_PORT, backlog=2048).start()
@@ -298,10 +321,12 @@ def promo_photo():
 
 START_TEXT = (
     "🚇 <b>Докопаться до Америки</b>\n\n"
-    "Пока все обсуждают тоннель между Россией и США — ты копаешь.\n"
-    "Веди буровую от Чукотки до Аляски, добывай золото и алмазы, "
-    "чини протечки и не взорвись на газе.\n\n"
-    "<i>Игра от «Новостей Москвы». Все персонажи и события вымышлены.</i>"
+    "Пока все обсуждают тоннель между Россией и США — ты копаешь!\n\n"
+    "⛏ Веди буровую от Чукотки до Аляски и открывай станции\n"
+    "💎 Сворачивай за золотом и алмазами — они превращаются в монеты\n"
+    "⚙️ Прокачивай бур, бак и отсек\n"
+    "👥 Зови друзей — за каждого бесплатное улучшение\n\n"
+    "<i>Игра от <a href=\"https://t.me/moscowmap\">«Новостей Москвы»</a>. Все персонажи и события вымышлены.</i>"
 )
 
 
@@ -607,7 +632,8 @@ POST_TEXT = (
     "🚇 <b>Тоннель Россия — США? Копаем сами!</b>\n\n"
     "Пока все обсуждают — ты копаешь. Веди буровую от Чукотки до Аляски, "
     "добывай алмазы, спасай тоннель от протечек и посмотри, кто из друзей докопается первым.\n\n"
-    "👇 Игра открывается прямо в Telegram"
+    "👇 Игра открывается прямо в Telegram\n"
+    "<i>Игра от <a href=\"https://t.me/moscowmap\">«Новостей Москвы»</a></i>"
 )
 
 

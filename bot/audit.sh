@@ -24,7 +24,7 @@ echo "===== СЕРВИСЫ ====="
 systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}' | grep -v -E '^(systemd|dbus|cron|getty|serial|polkit|rsyslog|snapd|ModemManager|multipathd|udisks|networkd|user@|irqbalance|packagekit|qemu)' | head -25
 echo
 echo "===== digtunnel ====="
-systemctl is-active digtunnel-bot 2>/dev/null && echo "бот: работает от пользователя $(ps -o user= -C python | head -1)"
+systemctl is-active digtunnel-bot >/dev/null 2>&1 && echo "бот: работает от пользователя $(ps -o user= -p "$(systemctl show -p MainPID --value digtunnel-bot)")"
 [ -f /opt/digtunnel/bot/.env ] && echo ".env права: $(stat -c '%a %U' /opt/digtunnel/bot/.env)"
 grep -h server_name /etc/nginx/sites-enabled/* 2>/dev/null | sort -u
 journalctl -u digtunnel-bot --since '1 hour ago' --no-pager 2>/dev/null | grep -c -E 'ERROR|Traceback' | xargs echo "ошибок бота за час:"

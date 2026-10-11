@@ -37,6 +37,12 @@ echo "==> 3/6 Python-окружение"
 echo "==> 4/6 Настройки и токен"
 ENV="$DIR/bot/.env"
 if [ ! -f "$ENV" ] && [ -f /opt/digtunnel-env ]; then cp /opt/digtunnel-env "$ENV"; fi
+if [ "${1:-}" = "--token" ] && [ -f "$ENV" ]; then
+  read -r -p "Вставь НОВЫЙ токен бота из BotFather и нажми Enter: " TOKEN </dev/tty
+  TOKEN="$(echo "$TOKEN" | tr -d '[:space:]')"
+  sed -i "s|^BOT_TOKEN=.*|BOT_TOKEN=$TOKEN|" "$ENV"
+  echo "    токен заменён"
+fi
 if [ ! -f "$ENV" ]; then
   echo
   read -r -p "Вставь токен бота @digtunnelbot из BotFather и нажми Enter: " TOKEN </dev/tty
@@ -56,7 +62,23 @@ API_URL=""
 if [ -n "$IP" ]; then
   HOST="${IP//./-}.sslip.io"
   PORT80="$(ss -ltnp '( sport = :80 )' 2>/dev/null | tail -n +2 || true)"
-  if [ -n "$PORT80" ] && ! echo "$PORT80" | grep -q nginx; then
+  if echo "$PORT80" | grep -q caddy; then
+    # На сервере уже работает Caddy (например, для Штампика) — добавляем свой адрес в его конфиг
+    CF="$(systemctl cat caddy 2>/dev/null | grep -o -- '--config [^ ]*' | head -1 | cut -d' ' -f2)"; CF="${CF:-/etc/caddy/Caddyfile}"
+    if [ -f "$CF" ] && ! grep -q '^[[:space:]]*{[[:space:]]*"' "$CF"; then
+      if ! grep -q "$HOST" "$CF"; then
+        cp "$CF" "$CF.bak-digtunnel"
+        printf '\n# digtunnel: статистика игры «Докопаться до Америки»\n%s {\n\thandle /api/* {\n\t\treverse_proxy 127.0.0.1:8090\n\t}\n\trespond 404\n}\n' "$HOST" >> "$CF"
+      fi
+      if caddy validate --config "$CF" --adapter caddyfile >/dev/null 2>&1; then
+        systemctl reload caddy && API_URL="https://$HOST/api" && echo "    ✅ адрес добавлен в Caddy: $API_URL (сертификат Caddy получит сам за ~1 минуту)"
+      else
+        echo "    ⚠️ Caddy не принял конфиг — возвращаю как было"; [ -f "$CF.bak-digtunnel" ] && cp "$CF.bak-digtunnel" "$CF"
+      fi
+    else
+      echo "    ⚠️ Не нашёл Caddyfile — статистика из игры будет выключена"
+    fi
+  elif [ -n "$PORT80" ] && ! echo "$PORT80" | grep -q nginx; then
     echo "    ⚠️ Порт 80 занят не nginx — пропускаю HTTPS. Игра и бот работают, статистика из игры будет выключена."
     echo "$PORT80" | head -3
   else
@@ -162,7 +184,8 @@ sleep 4
 systemctl --no-pager --lines=6 status digtunnel-bot || true
 echo
 if [ -n "$API_URL" ]; then
-  curl -fsS --max-time 5 "$API_URL/health" >/dev/null && echo "✅ Статистика доступна: $API_URL" || echo "⚠️ $API_URL пока не отвечает — проверь через минуту"
+  for i in $(seq 1 12); do curl -fsS --max-time 5 "$API_URL/health" >/dev/null 2>&1 && break; echo "    жду сертификат ($i/12)…"; sleep 10; done
+  curl -fsS --max-time 5 "$API_URL/health" >/dev/null 2>&1 && echo "✅ Статистика доступна: $API_URL" || echo "⚠️ $API_URL пока не отвечает — проверь через пару минут: curl $API_URL/health"
 fi
 echo "✅ Готово. Логи: journalctl -u digtunnel-bot -f"
 echo "Дальше: напиши боту /links и перешли ответ Claude."
