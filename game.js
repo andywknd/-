@@ -132,11 +132,11 @@ const defaultState = () => ({
   stats: { diamonds: 0, accidents: 0, sorties: 0, delivered: 0, earned: 0, playTime: 0, distract: 0, started: Date.now(), finishedAt: 0, maxDepth: 0, segEvac: 0 },
   set: { sound: true, jokes: true, vibro: true, calm: false },
   tut: { intro: false, firstOre: false, back: false, returned: false, scan: false, upgr: false },
-  proto: false, done: false, t: 0, chIntro: -1, completions: 0,
+  proto: false, done: false, t: 0, chIntro: -1, completions: 0, shop: {}, estimateSeg: -1, buys: 0,
 });
 
 const upv = k => C.UPGRADES[k].vals[S.up[k] - 1];
-const tankMax = () => upv('tank');
+const tankMax = () => Math.round(upv('tank') * (S.shop && S.shop.tank_plus ? 1.3 : 1));
 const hullMax = () => upv('hull');
 const cargoMax = () => upv('cargo');
 const consCap = () => 1 + (S.up.cargo >= 3 ? 1 : 0) + (S.up.cargo >= 5 ? 1 : 0);
@@ -251,6 +251,14 @@ const IMG = {};
   const i = new Image(); i.src = 'assets/' + n + '.webp'; IMG[n] = i;
 });
 const ok = i => i && i.complete && i.naturalWidth > 0;
+let goldC = null;
+function goldSprite() {
+  if (goldC) return goldC; if (!ok(IMG.drill)) return IMG.drill;
+  const c = document.createElement('canvas'); c.width = IMG.drill.naturalWidth; c.height = IMG.drill.naturalHeight; const g = c.getContext('2d');
+  g.drawImage(IMG.drill, 0, 0); g.globalCompositeOperation = 'source-atop';
+  const gr = g.createLinearGradient(0, 0, c.width, c.height); gr.addColorStop(0, 'rgba(255,236,140,.75)'); gr.addColorStop(.5, 'rgba(230,170,30,.65)'); gr.addColorStop(1, 'rgba(255,240,170,.75)');
+  g.fillStyle = gr; g.fillRect(0, 0, c.width, c.height); goldC = c; return c;
+}
 
 // ---------- Canvas ----------
 const cv = $('game'), cx = cv.getContext('2d');
@@ -410,11 +418,11 @@ function startLeak(x, y) {
 function evacuate(cause) {
   paused = true;
   const lost = [], kept = [], uniq = [];
-  S.cargo.forEach(it => (it.t >= 5 ? uniq : (Math.random() < .5 ? lost : kept)).push(it));
+  S.cargo.forEach(it => (it.t >= 5 ? uniq : (!S.shop.insurance && Math.random() < .5 ? lost : kept)).push(it));
   const showCause = { fuel: 'Топливо закончилось', hull: 'Машина разрушена', leak: 'Помпу не успели включить' }[cause] || 'Авария';
   modal(`<h2>🚨 ${showCause}</h2>
     <p>Бригада эвакуирует машину на станцию ${S.lastBase === 0 ? '«Чукотка»' : '№' + S.lastBase}.</p>
-    <p>• Теряется ~половина обычной добычи (<b>${lost.length}</b> из ${lost.length + kept.length}).<br>
+    <p>${S.shop.insurance ? '• 📄 Страховка «Каско-бур»: добыча сохраняется полностью.' : '• Теряется ~половина обычной добычи (<b>' + lost.length + '</b> из ' + (lost.length + kept.length) + ').'}<br>
     ${uniq.length ? `• Уникальные находки (${uniq.length}) останутся в аварийном контейнере на месте поломки.<br>` : ''}
     • Тоннель, улучшения, монеты и коллекция сохраняются.<br>• Базовый ремонт и топливо — бесплатно.</p>`,
     [{ t: 'Эвакуировать', cls: 'btn', fn: () => {
@@ -509,6 +517,7 @@ function achieve(id) {
   if (S.ach.indexOf(id) >= 0) return; S.ach.push(id); toast('🏆 ' + C.ACH[id].name); SFX.gem(); dirty = true;
 }
 
+const CAT_LINES = ['Мяу. (Перевод: «смета не сходится».)', 'Мур. Я проверил грунт — тёплый, можно спать.', 'Мяу! Там алмаз. Или мышь. Копай, разберёмся.', 'Кот-прораб одобряет этот тоннель. Подпись: лапа.', 'Мяу. Американцы прислали корм в фунтах. Возмущён.'];
 // ---------- Обновление ----------
 let lastT = performance.now(), sayTimer = 0;
 function update(dt) {
@@ -550,8 +559,9 @@ function update(dt) {
       if (S.fuel <= 0) { /* стоим */ }
       else if (passable(tx, ty)) {
         const kk = idx(tx, ty), r = rf[kk] && rf[idx(M.x, M.y)];
-        const cost = dy < 0 ? .7 : r ? .12 : .35;
-        S.fuel -= cost; startMove(tx, ty, (r ? .11 : .21) / speed);
+        const lift = dy < 0 && S.shop.lift;
+        const cost = dy < 0 ? (lift ? 0 : .7) : r ? .12 : .35;
+        S.fuel -= cost; startMove(tx, ty, (r ? .11 : .21) / speed / (lift ? 2 : 1));
       } else {
         const h = hardAt(tx, ty);
         if (h < 99 && h <= drillCap()) {
@@ -585,7 +595,7 @@ function update(dt) {
   if (S.hull <= 0 && !paused) { S.hull = 0; evacuate('hull'); }
   if (atBase >= 0) S.heat = Math.max(0, S.heat - 30 * dt);
   // амбиент-реплики
-  if (run && S.set.jokes) { ambientT -= dt; if (ambientT <= 0) { ambientT = rnd(80, 130); say(Math.random() < .5 ? 'petrovich' : 'alya', C.JOKES.ambient[(Math.random() * C.JOKES.ambient.length) | 0]); } }
+  if (run && S.set.jokes) { ambientT -= dt; if (ambientT <= 0) { ambientT = rnd(80, 130); if (S.shop.cat && Math.random() < .4) say('cat', CAT_LINES[(Math.random() * CAT_LINES.length) | 0]); else say(Math.random() < .5 ? 'petrovich' : 'alya', C.JOKES.ambient[(Math.random() * C.JOKES.ambient.length) | 0]); } }
   if (S.coins >= 1000) achieve('budget');
   // визуальная позиция
   if (M.st === 'move' || M.st === 'fall') { const t = Math.min(M.t, 1); M.rx = M.fx + (M.x - M.fx) * t; M.ry = M.fy + (M.y - M.fy) * t; }
@@ -727,7 +737,8 @@ function drawMachine(ts, ox, oy) {
   cx.rotate(rot); cx.scale(flip, 1);
   const s = ts * 1.22;
   if (S.heat > 75) { cx.shadowColor = '#ff4a1a'; cx.shadowBlur = 14 + Math.sin(time * 12) * 6; }
-  if (ok(IMG.drill)) { const dh = s * IMG.drill.naturalHeight / IMG.drill.naturalWidth; cx.drawImage(IMG.drill, -s / 2, -dh / 2 - ts * .02, s, dh); }
+  const spr = S.shop.skin_gold ? goldSprite() : IMG.drill;
+  if (ok(IMG.drill)) { const dh = s * IMG.drill.naturalHeight / IMG.drill.naturalWidth; cx.drawImage(spr, -s / 2, -dh / 2 - ts * .02, s, dh); }
   else { cx.fillStyle = '#ff9d2e'; cx.fillRect(-ts * .4, -ts * .3, ts * .6, ts * .6); cx.fillStyle = '#aaa'; cx.beginPath(); cx.moveTo(ts * .2, -ts * .3); cx.lineTo(ts * .5, 0); cx.lineTo(ts * .2, ts * .3); cx.fill(); }
   cx.shadowBlur = 0;
   // улучшения видны на машине
@@ -738,6 +749,8 @@ function drawMachine(ts, ox, oy) {
   if (S.up.scanner >= 3) { cx.strokeStyle = '#9ff'; cx.lineWidth = 2; cx.beginPath(); cx.moveTo(-s * .05, -s * .3); cx.lineTo(-s * .05, -s * .48); cx.stroke(); cx.fillStyle = '#9ff'; cx.beginPath(); cx.arc(-s * .05, -s * .5, 3, 0, 7); cx.fill(); }
   if (S.up.hull >= 3) { cx.strokeStyle = 'rgba(200,210,220,.9)'; cx.lineWidth = 2; cx.strokeRect(-s * .38, -s * .08, s * .45, s * .2); }
   cx.restore();
+  if (S.shop.cat) { cx.font = `${ts * .55}px serif`; cx.textAlign = 'center'; cx.textBaseline = 'bottom'; cx.save(); cx.translate(px - ts * .12, py - ts * .32 + Math.sin(time * 3) * 1.5); if (d === 'l') cx.scale(-1, 1); cx.fillText('🐈', 0, 0); cx.restore(); }
+  if (S.shop.skin_gold && Math.random() < .3) particles.push({ x: M.rx + .5 + rnd(-.4, .4), y: M.ry + .5 + rnd(-.3, .3), vx: rnd(-.5, .5), vy: rnd(-1.5, -.5), life: .5, c: '#ffe27a' });
 }
 
 function drawLight(ts, ox, oy) {
@@ -930,12 +943,13 @@ function segCheck() {
     }
   }
   const path = []; if (found >= 0) { let k = found; while (k >= 0) { path.push(k); k = prev[k]; } }
-  const req = C.segReq(i);
+  const req = reqFor(i);
   return { connected: found >= 0, path, req, okIron: S.wh.iron >= req.iron, okCopper: S.wh.copper >= req.copper };
 }
 
 function upCost(k) { const n = S.up[k]; if (n >= 5) return null; return Math.round(C.UP_COST[n] * C.UP_MULT[k]); }
-function needFor() { const r = S.built < NCH ? C.segReq(S.built) : { iron: 0, copper: 0 }; return r; }
+function reqFor(i) { const r = C.segReq(i); if (S.estimateSeg === i) return Object.assign({}, r, { iron: Math.ceil(r.iron / 2), copper: Math.ceil(r.copper / 2) }); return r; }
+function needFor() { const r = S.built < NCH ? reqFor(S.built) : { iron: 0, copper: 0 }; return r; }
 
 function openBase(tab) {
   if (atBase < 0) return;
@@ -983,12 +997,14 @@ function openBase(tab) {
   // переезд
   if (S.built >= 1) h += `<div class="sec"><h3><span>🚃 Переезд между станциями</span></h3><div style="display:flex;flex-wrap:wrap;gap:6px">` +
     Array.from({ length: S.built + 1 }, (_, i) => `<button class="btn sec2" data-tp="${i}" ${i === b ? 'disabled' : ''}>${i === 0 ? 'Чукотка' : i === NCH ? 'Аляска' : 'Ст. ' + i}</button>`).join('') + `</div></div>`;
+  if (shopReady()) h += `<button class="btn sec2 wide" id="shopBtn">⭐ Лавка миллиардера — забавные ускорялки</button>`;
   h += `<button class="btn good wide" id="goBtn">⛏ В вылазку</button>`;
   openSheet(b === 0 ? 'База «Чукотка»' : b === NCH ? 'База «Аляска»' : 'Станция ' + b, h);
   baseSummary = '';
   const body = $('sheetBody');
   const on = (id, fn) => { const e = body.querySelector('#' + id); if (e) e.onclick = fn; };
   on('goBtn', closeSheet);
+  on('shopBtn', () => openShop(true));
   on('sellBtn', () => {
     let gain = surIron * C.ORES[1].price + surCopper * C.ORES[2].price + S.wh.gold * C.ORES[3].price + S.wh.diamond * C.ORES[4].price + S.wh.colored.length * C.ORES[5].price;
     const hadDiamond = S.wh.diamond > 0 || S.wh.colored.length > 0;
@@ -1062,11 +1078,13 @@ $('strip').addEventListener('click', () => {
 $('menuBtn').addEventListener('click', () => {
   if (!S) return;
   openSheet('Меню', `<button class="btn wide" id="m-share">📣 Поделиться прогрессом</button>
+    ${shopReady() ? '<button class="btn sec2 wide" id="m-shop">⭐ Лавка миллиардера</button>' : ''}
     <button class="btn sec2 wide" id="m-coll">💎 Коллекция и достижения</button>
     <button class="btn sec2 wide" id="m-set">⚙️ Настройки</button>
     <button class="btn sec2 wide" id="m-sos">🚨 Застрял? Эвакуация</button>
     <button class="btn sec2 wide" id="m-title">🏠 На главный экран</button>`);
   $('m-share').onclick = () => openShare();
+  if ($('m-shop')) $('m-shop').onclick = () => openShop();
   $('m-coll').onclick = () => openCollection();
   $('m-set').onclick = () => openSettings();
   $('m-sos').onclick = () => { closeSheet(); if (atBase >= 0) return toast('Ты и так на базе'); evacuate('sos'); };
@@ -1090,6 +1108,44 @@ function openSettings() {
   $('sheetBody').querySelectorAll('[data-set]').forEach(e => e.onchange = () => { S.set[e.dataset.set] = e.checked; dirty = true; });
   $('resetBtn').onclick = () => modal('<h2>Начать заново?</h2><p>Тоннель, деньги и улучшения обнулятся. Коллекция и достижения останутся.</p>', [
     { t: 'Отмена', cls: 'btn sec2' }, { t: 'Заново', cls: 'btn', fn: () => newCampaign() }]);
+}
+
+// ---------- Лавка за Telegram Stars ----------
+function shopReady() { return !!(window.DIG_SHOP && inTG && tg.openInvoice && tg.isVersionAtLeast && tg.isVersionAtLeast('6.1')); }
+function openShop(fromBase) {
+  const items = C.SHOP.map(it => {
+    const owned = !it.consumable && S.shop[it.id];
+    const usedEst = it.id === 'estimate' && (S.estimateSeg === S.built || S.built >= NCH);
+    return `<div class="row"><span style="font-size:26px;width:34px;text-align:center">${it.icon}</span><span class="grow"><b>${it.name}</b><div class="sub">${it.desc}</div></span>
+      ${owned ? '<b class="ok">Есть ✔</b>' : `<button class="btn" data-buy="${it.id}" ${usedEst ? 'disabled' : ''}>⭐ ${it.stars}</button>`}</div>`;
+  }).join('');
+  openSheet('⭐ Лавка миллиардера', `<div class="sec" style="background:#2a2410;border:1px solid #6b5a1f"><div style="font-size:13.5px;line-height:1.45">Всю игру можно пройти <b>без звёзд</b>. Здесь — забавные штуки и немного ускорения для тех, кто спешит к Аляске.</div></div>
+    <div class="sec">${items}</div>
+    ${fromBase ? '<button class="btn sec2 wide" id="shopBack">← Назад на базу</button>' : ''}
+    <p style="font-size:11.5px;color:#9db4c2">Оплата через Telegram Stars. Вопросы по оплате — команда /paysupport в боте @${BOT}.</p>`);
+  $('sheetBody').querySelectorAll('[data-buy]').forEach(b => b.onclick = () => buy(b.dataset.buy));
+  if ($('shopBack')) $('shopBack').onclick = () => openBase();
+}
+function grant(id) {
+  const it = C.SHOP.find(x => x.id === id); if (!it) return;
+  if (id === 'coins') S.coins += 400;
+  else if (id === 'estimate') S.estimateSeg = S.built;
+  else { S.shop[id] = 1; if (id === 'tank_plus') S.fuel = tankMax(); }
+  S.buys++; dirty = true; save(true);
+  SFX.build(); haptic('success'); toast(it.icon + ' ' + it.name + ' — готово!');
+  if (id === 'cat') setTimeout(() => say('cat', 'Мяу. Я теперь здесь главный. Петрович в курсе.', true), 600);
+  if (id === 'estimate') setTimeout(() => say('petrovich', 'Резолюция «Согласовано»! Железа и меди теперь вдвое меньше. Чудеса бюрократии.', true), 600);
+}
+function buy(id) {
+  const link = window.DIG_SHOP && window.DIG_SHOP[id];
+  if (!link || !inTG) return toast('Лавка работает внутри Telegram');
+  track('buy_open', { id });
+  try {
+    tg.openInvoice(link, status => {
+      if (status === 'paid') { grant(id); track('buy_paid', { id }); if ($('sheet').classList.contains('hidden') === false && $('sheetTitle').textContent.indexOf('Лавка') >= 0) openShop(atBase >= 0); }
+      else if (status === 'failed') toast('Оплата не прошла');
+    });
+  } catch (e) { toast('Не удалось открыть оплату'); }
 }
 
 // ---------- Шаринг ----------
