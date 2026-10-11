@@ -1025,7 +1025,8 @@ async def admin_help(m: Message):
         "/broadcast — рассылка по игрокам\n/remind — напомнить тем, кто не открыл игру\n/stopbroadcast — остановить рассылку\n"
         "/preview — показать пост для канала\n/post @канал — опубликовать пост\n"
         "/links — ссылки на оплату для лавки\n/refund id charge — вернуть звёзды\n"
-        "/health — проверка сервера\n/errors — ошибки в игре и сообщения игроков")
+        "/health — проверка сервера\n/errors — ошибки в игре и сообщения игроков\n"
+        "/reply id текст — ответить игроку (или просто «Ответить» на его сообщение)")
 
 
 # ---------- Напоминание тем, кто нажал START, но так и не открыл игру ----------
@@ -1104,6 +1105,43 @@ async def remind_run(admin_chat: int):
         await asyncio.sleep(0.05)
     BC_RUNNING["on"] = False
     await bot.send_message(admin_chat, f"✅ Напоминание: доставлено {ok}, заблокировали бота {blocked}, ошибок {fail} (из {len(rows)})")
+
+
+# ---------- Ответ игроку от имени бота ----------
+import re as _re
+REPLY_HEAD = {"ru": "💬 <b>Ответ от команды «Докопаться до Америки»</b>\n\n", "en": "💬 <b>Reply from the «Dig to America» team</b>\n\n"}
+
+
+async def reply_to_player(m: Message, uid: int, text: str):
+    row = db.execute("SELECT lang FROM players WHERE uid=?", (uid,)).fetchone()
+    en = bool(row and row[0]) and not row[0].lower().startswith(RU_LANGS)
+    try:
+        await bot.send_message(uid, REPLY_HEAD["en" if en else "ru"] + esc(text), parse_mode="HTML", reply_markup=play_kb_private(en))
+        add_event(uid, "admin_reply")
+        await m.answer(f"✅ Отправлено игроку (id {uid}).")
+    except TelegramForbiddenError:
+        await m.answer("❌ Игрок заблокировал бота — сообщение не доставить.")
+    except Exception as e:
+        await m.answer(f"❌ Не удалось отправить: {esc(e)}", parse_mode="HTML")
+
+
+@dp.message(Command("reply"), is_admin)
+async def reply_cmd(m: Message, command: CommandObject):
+    parts = (command.args or "").split(maxsplit=1)
+    if len(parts) < 2 or not parts[0].isdigit():
+        await m.answer("Как ответить игроку:\n• нажми «Ответить» (свайп влево) на сообщении об ошибке и напиши текст\n• или: /reply <id> текст")
+        return
+    await reply_to_player(m, int(parts[0]), parts[1])
+
+
+@dp.message(is_admin, F.reply_to_message, lambda m: bool(_re.search(r"\(id (\d+)\)", (m.reply_to_message.text or m.reply_to_message.caption or ""))))
+async def reply_by_quote(m: Message):
+    """Админ ответил (reply) на «Сообщение об ошибке» — пересылаем текст этому игроку от бота."""
+    uid = int(_re.search(r"\(id (\d+)\)", m.reply_to_message.text or m.reply_to_message.caption or "").group(1))
+    if not (m.text or "").strip():
+        await m.answer("Пока можно отвечать только текстом.")
+        return
+    await reply_to_player(m, uid, m.text)
 
 
 @dp.message(Command("health"), is_admin)
