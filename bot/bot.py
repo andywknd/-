@@ -58,6 +58,9 @@ log = logging.getLogger("dig")
 TITLES = ["Стажёр бура", "Бригадир мерзлоты", "Подводный прораб", "Почти американец",
           "Алмазный отвлекатор", "Мастер эвакуации", "Соединитель континентов"]
 DISTRACT = ["почти никогда", "иногда", "постоянно"]
+TITLES_EN = ["Drill Intern", "Permafrost Foreman", "Undersea Supervisor", "Almost American",
+             "Diamond Distraction", "Evacuation Master", "Continent Connector"]
+DISTRACT_EN = ["almost never", "sometimes", "all the time"]
 
 PRODUCTS = {
     "skin_gold": ("Золотой бур", "Позолоченная буровая с искрами. Чистая косметика.", 25),
@@ -315,12 +318,20 @@ def start_kb(ref: str = "ch") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⛏ Играть", url=f"https://t.me/{BOT_USERNAME}?start={ref}")]])
 
 
-def play_kb_private() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⛏ Копать до Америки", web_app=WebAppInfo(url=GAME_URL))]])
+RU_LANGS = ("ru", "uk", "be", "kk", "ky", "uz", "tg", "hy", "az", "ka", "ro")
 
 
-def play_kb_link(start: str = "") -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⛏ Копать до Америки", url=app_link(start))]])
+def is_en(user) -> bool:
+    lc = (getattr(user, "language_code", None) or "ru").lower()
+    return not lc.startswith(RU_LANGS)
+
+
+def play_kb_private(en: bool = False) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⛏ Dig to America" if en else "⛏ Копать до Америки", web_app=WebAppInfo(url=GAME_URL))]])
+
+
+def play_kb_link(start: str = "", en: bool = False) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⛏ Dig to America" if en else "⛏ Копать до Америки", url=app_link(start))]])
 
 
 bot = Bot(TOKEN)
@@ -353,6 +364,15 @@ START_TEXT = (
     "👥 {invite} — за каждого бесплатное улучшение\n\n"
     "<i>Игра от <a href=\"https://t.me/moscowmap\">«Новостей Москвы»</a>. Все персонажи и события вымышлены.</i>"
 )
+START_TEXT_EN = (
+    "🚇 <b>Dig to America</b>\n\n"
+    "While everyone is talking about a tunnel between Russia and the USA — you're digging it!\n\n"
+    "⛏ Drive the rig from Chukotka to Alaska and open new stations\n"
+    "💎 Turn off the route for gold and diamonds — they turn into coins\n"
+    "⚙️ Upgrade your drill, tank and cargo hold\n"
+    "👥 {invite} — a free upgrade for each one\n\n"
+    "<i>A game by <a href=\"https://t.me/moscowmap\">«Moscow News»</a>. All characters and events are fictional.</i>"
+)
 
 
 @dp.message(CommandStart())
@@ -363,10 +383,11 @@ async def start(m: Message, command: CommandObject):
                  lang=(u.language_code or "")[:8], premium=1 if u.is_premium else 0, ref=(command.args or "")[:32] or None)
     add_event(u.id, "bot_start", {"ref": command.args} if command.args else None)
     share = invite_url(u.id)
-    text = START_TEXT.replace("{invite}", f'<a href="{share}">Зови друзей</a>')
+    en = is_en(u)
+    text = (START_TEXT_EN if en else START_TEXT).replace("{invite}", f'<a href="{share}">{"Invite friends" if en else "Зови друзей"}</a>')
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⛏ Копать до Америки", web_app=WebAppInfo(url=GAME_URL))],
-        [InlineKeyboardButton(text="👥 Пригласить друга", url=share)]])
+        [InlineKeyboardButton(text="⛏ Dig to America" if en else "⛏ Копать до Америки", web_app=WebAppInfo(url=GAME_URL))],
+        [InlineKeyboardButton(text="👥 Invite a friend" if en else "👥 Пригласить друга", url=share)]])
     res = await send_safe(lambda: m.answer_photo(promo_photo(), caption=text, parse_mode="HTML", reply_markup=kb))
     if res and res.photo and not promo_file_id:
         promo_file_id = res.photo[-1].file_id
@@ -376,27 +397,39 @@ async def start(m: Message, command: CommandObject):
 async def inline(q: InlineQuery):
     parts = (q.query or "").split()
     uid = q.from_user.id
-    caption = "🚇 Докопаться до Америки. Пока все обсуждают — ты копаешь."
-    title = "Позвать копать тоннель"
+    en = is_en(q.from_user)
+    caption = "🚇 Dig to America. While everyone talks — you dig." if en else "🚇 Докопаться до Америки. Пока все обсуждают — ты копаешь."
+    title = "Invite to dig the tunnel" if en else "Позвать копать тоннель"
     if len(parts) >= 6 and parts[0] == "r":
         try:
             p, d, a, ti, wi = (int(x) for x in parts[1:6])
             p = max(0, min(100, p))
-            t = TITLES[ti] if 0 <= ti < len(TITLES) else TITLES[0]
-            w = DISTRACT[wi] if 0 <= wi < len(DISTRACT) else DISTRACT[1]
-            if p >= 100:
+            TT, DD = (TITLES_EN, DISTRACT_EN) if en else (TITLES, DISTRACT)
+            t = TT[ti] if 0 <= ti < len(TT) else TT[0]
+            w = DD[wi] if 0 <= wi < len(DD) else DD[1]
+            if en:
+                if p >= 100:
+                    caption = f"🚇 I dug all the way to America! Chukotka and Alaska are connected.\n💎 Diamonds: {d}. Crashes: {a}.\n🏅 Rank: «{t}»"
+                else:
+                    caption = (f"⛏ Left to dig to Alaska: {100 - p}%.\n💎 Diamonds found: {d}.\n"
+                               f"🙈 Got distracted from the main task: {w}.\n🏅 Rank: «{t}»")
+                caption += "\n\nCan you dig through faster?"
+                title = f"My tunnel: {p}% · «{t}»"
+            elif p >= 100:
                 caption = f"🚇 Я докопался до Америки! Чукотка и Аляска соединены.\n💎 Алмазов: {d}. Аварий: {a}.\n🏅 Звание: «{t}»"
             else:
                 caption = (f"⛏ До Аляски осталось {100 - p}%.\n💎 Алмазов найдено: {d}.\n"
                            f"🙈 От основной задачи отвлекался: {w}.\n🏅 Звание: «{t}»")
-            caption += "\n\nА ты докопаешься быстрее?"
-            title = f"Мой тоннель: {p}% · «{t}»"
+            if not en:
+                caption += "\n\nА ты докопаешься быстрее?"
+                title = f"Мой тоннель: {p}% · «{t}»"
         except ValueError:
             pass
     result = InlineQueryResultPhoto(
         id=str(abs(hash(q.query)) % 10**12), photo_url=PROMO_URL, thumbnail_url=PROMO_URL,
-        photo_width=1280, photo_height=720, title=title, description="Карточка с результатом и кнопкой «Играть»",
-        caption=caption, reply_markup=play_kb_link(f"r{uid}"),
+        photo_width=1280, photo_height=720, title=title,
+        description="Result card with a Play button" if en else "Карточка с результатом и кнопкой «Играть»",
+        caption=caption, reply_markup=play_kb_link(f"r{uid}", en),
     )
     await send_safe(lambda: q.answer([result], cache_time=30, is_personal=True))
 
@@ -705,7 +738,8 @@ async def admin_help(m: Message):
 
 @dp.message()
 async def other(m: Message):
-    await send_safe(lambda: m.answer("Жми кнопку — и копаем 👇", reply_markup=play_kb_private()))
+    en = is_en(m.from_user)
+    await send_safe(lambda: m.answer("Press the button and let's dig 👇" if en else "Жми кнопку — и копаем 👇", reply_markup=play_kb_private(en)))
 
 
 async def main():

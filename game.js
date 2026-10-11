@@ -1286,7 +1286,7 @@ function segPath() {
 }
 let buildPending = false;
 function updGap() { const p = segPath(); segGap = p ? p.gap : 0; if (p && p.connected && !buildPending && S.tut.intro) { buildPending = true; setTimeout(() => { buildPending = false; buildSegment(); }, 250); } }
-function cellsWord(n) { const a = n % 10, b = n % 100; return a === 1 && b !== 11 ? 'клетка' : a >= 2 && a <= 4 && (b < 12 || b > 14) ? 'клетки' : 'клеток'; }
+function cellsWord(n) { if (window.LANG === 'en') return n === 1 ? 'клетка' : 'клетки'; const a = n % 10, b = n % 100; return a === 1 && b !== 11 ? 'клетка' : a >= 2 && a <= 4 && (b < 12 || b > 14) ? 'клетки' : 'клеток'; }
 function stationName(i) { return i === 0 ? 'Чукотка' : i === NCH ? 'Аляска' : 'Станция ' + i; }
 
 function upCost(k) { const n = S.up[k]; if (n >= 5) return null; return Math.round(C.UP_COST[n] * C.UP_MULT[k]); }
@@ -1530,9 +1530,11 @@ function openSettings() {
   const t = (k, name) => `<label class="toggle"><span>${name}</span><input type="checkbox" data-set="${k}" ${S.set[k] ? 'checked' : ''}></label>`;
   const ti = (id, name) => S.shop[id] ? `<label class="toggle"><span>${name}</span><input type="checkbox" data-inv="${id}" ${itemOn(id) ? 'checked' : ''}></label>` : '';
   openSheet('Настройки', `<div class="sec">${t('sound', '🔊 Звук')}${t('jokes', '💬 Реплики персонажей')}${t('vibro', '📳 Вибрация')}${t('calm', '🌙 Меньше тряски и вспышек')}${ti('cat', '🐈 Кот-прораб на буровой')}${ti('skin_gold', '✨ Золотой бур')}</div>
+    <div class="toggle"><span>🌐 Язык / Language</span><span class="langsw"><button class="btn ${window.LANG === 'en' ? 'sec2' : ''} sm" data-lang="ru">RU</button><button class="btn ${window.LANG === 'en' ? '' : 'sec2'} sm" data-lang="en">EN</button></span></div>
     <button class="btn sec2 wide" id="resetBtn">Начать кампанию заново</button>
     <p style="font-size:12px;color:#9db4c2">Прогресс сохраняется в облаке Telegram. Коллекция и достижения при перезапуске сохраняются.</p>`);
   $('sheetBody').querySelectorAll('[data-set]').forEach(e => e.onchange = () => { S.set[e.dataset.set] = e.checked; dirty = true; });
+  $('sheetBody').querySelectorAll('[data-lang]').forEach(e => e.onclick = () => { if (e.dataset.lang === (window.LANG || 'ru')) return; try { localStorage.setItem('dig_lang', e.dataset.lang); } catch (er) {} save(true); setTimeout(() => location.reload(), 150); });
   $('sheetBody').querySelectorAll('[data-inv]').forEach(e => e.onchange = () => { S.set['off_' + e.dataset.inv] = !e.checked; dirty = true; save(true); });
   $('resetBtn').onclick = () => modal('<h2>Начать заново?</h2><p>Тоннель, деньги и улучшения обнулятся. Коллекция и достижения останутся.</p>', [
     { t: 'Отмена', cls: 'btn sec2' }, { t: 'Заново', cls: 'btn', fn: () => newCampaign() }]);
