@@ -575,12 +575,38 @@ let oreTipShownAt = 0;
 document.addEventListener('pointerdown', e => {
   if (oreTipT > 0 && performance.now() - oreTipShownAt > 1200) hideOreTip();
 }, true);
+// Не пробивается — предложение улучшить бур прямо у машины
+let offerT = 0;
+function doUpgrade(k, free) {
+  const cost = upCost(k); if (cost === null) return false;
+  if (free) { if (!S.refs.tokens) return false; S.refs.tokens--; } else { if (S.coins < cost) return false; S.coins -= cost; }
+  const fr = S.fuel / tankMax(), hr = S.hull / hullMax();
+  S.up[k]++; if (k === 'tank') S.fuel = fr * tankMax(); if (k === 'hull') S.hull = hr * hullMax();
+  SFX.build(); haptic('success'); track('upgrade', { k, lvl: S.up[k], free: free ? 1 : 0, field: 1 }); dirty = true; save(true);
+  return true;
+}
+function showDrillOffer(need) {
+  const el = $('upNow'), cost = upCost('drill');
+  const mx = M.rx * TS - camX + TS / 2, my = M.ry * TS - camY;
+  el.style.left = clamp(mx, 120, VW - 120) + 'px'; el.style.top = Math.max(110, my - 120) + 'px';
+  let h = `<div class="ut">🪨 Слишком твёрдо!</div><div class="us">Нужен бур уровня ${need} · сейчас ${S.up.drill}</div>`;
+  if (cost === null) h += `<div class="us">Обойди этот камень сверху или снизу</div>`;
+  else if (S.refs.tokens) h += `<button class="btn good" data-act="free">🎟 Улучшить бур бесплатно</button>`;
+  else if (S.coins >= cost) h += `<button class="btn" data-act="buy">⬆️ Улучшить бур · ${cost} 🪙</button>`;
+  else h += `<div class="un2">Нужно <b>${cost} 🪙</b>, у тебя ${Math.floor(S.coins)}.<br>Собирай руду 🪨🟠🟡 вверху и внизу — на базе она станет монетами. Или обойди камень.</div>`;
+  el.innerHTML = h; el.classList.remove('hidden'); offerT = 5;
+  const b = el.querySelector('[data-act]');
+  if (b) b.onclick = e => { e.stopPropagation(); if (doUpgrade('drill', b.dataset.act === 'free')) { toast('⛏ Бур → уровень ' + S.up.drill + '!'); el.classList.add('hidden'); offerT = 0; } };
+}
+['pointerdown', 'pointerup'].forEach(t => $('upNow').addEventListener(t, e => e.stopPropagation()));
+
 // ---------- Обновление ----------
 let lastT = performance.now(), sayTimer = 0;
 function update(dt) {
   S.stats.playTime += dt;
   if (sayTimer > 0) { sayTimer -= dt; if (sayTimer <= 0) $('say').classList.add('off'); }
   if (sayCD > 0) sayCD -= dt;
+  if (offerT > 0) { offerT -= dt; if (offerT <= 0) $('upNow').classList.add('hidden'); }
   if (scanCD > 0) scanCD -= dt;
   if (scan) { scan.t -= dt; if (scan.t <= 0) scan = null; }
   if (flash > 0) flash -= dt; if (shakeT > 0) shakeT -= dt;
@@ -633,7 +659,7 @@ function update(dt) {
         } else if (performance.now() - lastTip > 2500) {
           lastTip = performance.now();
           if (tx >= fenceX() && ty >= SURF) floater(tx, ty, 'Дальше пока закрыто 🚧 Сначала построй этот участок', '#ffd27a');
-          else if (h < 99) { const need = h - 1; floater(tx, ty, 'Твёрдо! Бур ур. ' + need + ' на базе — или обойди', '#ffd27a'); SFX.warn(); }
+          else if (h < 99) { showDrillOffer(h - 1); SFX.warn(); }
           else if (ty <= SURF - 1) floater(tx, ty, 'Выше — море. Копаем под дном!', '#9fd8ff');
         }
       }
@@ -1076,9 +1102,10 @@ function openBase() {
   const tk = S.refs.tokens;
   h += `<div class="ups-h"><span>⚙️ Улучшения</span><b>${tk ? '🎟 ' + tk + ' · ' : ''}🪙 ${Math.floor(S.coins)}</b></div><div class="ups">` + Object.keys(C.UPGRADES).filter(k => F.up(k)).map(k => {
     const u = C.UPGRADES[k], n = S.up[k], cost = upCost(k);
-    return `<div class="up"><div class="ui">${UP_ICON[k]}</div><div class="un">${u.name}</div>${pips(n)}
+    return `<div class="up"><img class="uimg" src="assets/up_${k}.webp" alt="" onerror="this.outerHTML='<div class=ui>${UP_ICON[k]}</div>'"><div class="un">${u.name}</div>${pips(n)}
       <div class="uv">${cost !== null ? u.fmt(u.vals[n - 1]) + ' → <b>' + u.fmt(u.vals[n]) + '</b>' : 'максимум'}</div>
-      ${cost === null ? '<b class="ok">MAX ✔</b>' : tk ? `<button class="btn good" data-free="${k}">🎟 Бесплатно</button>` : `<button class="btn" data-up="${k}" ${S.coins < cost ? 'disabled' : ''}>${cost} 🪙</button>`}</div>`;
+      ${cost === null ? '<b class="ok">MAX ✔</b>' : tk ? `<button class="btn good" data-free="${k}">🎟 Бесплатно</button>` : `<button class="btn" data-up="${k}" ${S.coins < cost ? 'disabled' : ''}>${cost} 🪙</button>`}
+      <div class="uh">${u.desc}</div></div>`;
   }).join('') + `</div>`;
   const cons = ['can', 'rep', 'cool'].filter(k => F.cons(k));
   if (cons.length) h += `<div class="ups-h"><span>🎒 С собой в вылазку</span></div><div class="cons">` + cons.map(k => { const c = C.CONSUMABLES[k]; return `<button class="btn sec2" data-cons="${k}" ${S.cons[k] >= consCap() || S.coins < c.price ? 'disabled' : ''}>${c.icon} ${S.cons[k]}/${consCap()} · ${c.price}🪙</button>`; }).join('') + `</div>`;
@@ -1087,7 +1114,7 @@ function openBase() {
   if (aq.length) h += `<div class="ups-h"><span>📋 Задания</span></div>` + aq.map(q => `<div class="qrow">• ${q.text} <b>+${q.reward}🪙</b></div>`).join('');
   if (S.built >= 1) h += `<div class="ups-h"><span>🚃 Переезд</span></div><div class="cons">` + Array.from({ length: S.built + 1 }, (_, i) => `<button class="btn sec2" data-tp="${i}" ${i === b ? 'disabled' : ''}>${i === 0 ? 'Чукотка' : i === NCH ? 'Аляска' : 'Ст. ' + i}</button>`).join('') + `</div>`;
   if (F.shop) h += `<button class="btn sec2 wide" id="shopBtn">⭐ Лавка миллиардера</button>`;
-  openSheet(b === 0 ? '🏠 База «Чукотка»' : b === NCH ? '🏠 База «Аляска»' : '🏠 Станция ' + b, h);
+  openSheet('⚙️ Улучшения на базе «' + (b === 0 ? 'Чукотка' : b === NCH ? 'Аляска' : 'Станция ' + b) + '»', h);
   baseSummary = null;
   const body = $('sheetBody');
   const on = (id, fn) => { const e = body.querySelector('#' + id); if (e) e.onclick = fn; };
@@ -1152,7 +1179,7 @@ function checkRefs(force) {
         setTimeout(() => dialog([['petrovich', 'Трое друзей в бригаде! Вся техника получила +1 уровень. Вот это я понимаю — командная работа!']]), 600);
       }
       track('refs', { n: S.refs.n }); dirty = true; save(true);
-      if (atBase >= 0 && !$('sheet').classList.contains('hidden') && $('sheetTitle').textContent.indexOf('🏠') === 0) openBase();
+      if (atBase >= 0 && !$('sheet').classList.contains('hidden') && $('sheetTitle').textContent.indexOf('⚙️ Улучшения на базе') === 0) openBase();
     }).catch(() => {});
 }
 
@@ -1430,6 +1457,19 @@ if (inTG && tg.onEvent) { try { tg.onEvent('deactivated', onHide); tg.onEvent('a
 window.addEventListener('pagehide', () => save(true));
 window.addEventListener('resize', resize);
 
+// ---------- Свежая версия (Telegram кэширует страницу) ----------
+function checkVersion() {
+  try {
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.json()).then(d => {
+      if (d && d.v && window.GAME_V && d.v > window.GAME_V && sessionStorage.getItem('dig_reload') !== String(d.v)) {
+        sessionStorage.setItem('dig_reload', String(d.v)); save(true);
+        location.replace(location.pathname + '?v=' + d.v + location.hash);
+      }
+    }).catch(() => {});
+  } catch (e) {}
+}
+setTimeout(checkVersion, 800);
+
 // ---------- Старт ----------
 function boot() {
   if (inTG) {
@@ -1451,6 +1491,6 @@ function boot() {
   });
 }
 boot();
-window.__dig = { get S() { return S; }, M, segPath, teleport, buildSegment, fenceX, openBase,
+window.__dig = { get S() { return S; }, M, segPath, teleport, buildSegment, fenceX, openBase, showDrillOffer,
   digRow: (x0, x1, y) => { for (let x = x0; x <= x1; x++) { const k = idx(x, y); if (grid[k] < 6) { grid[k] = 0; dug[k] = 1; exp[k] = 1; } } computeDist(); }, bx, finale };
 })();
