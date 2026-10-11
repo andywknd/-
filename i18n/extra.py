@@ -66,4 +66,7 @@ EXTRA = {
     'Спасибо за подписку на «Новости Москвы»': 'Thanks for subscribing to «Moscow News»',
     'за подписку на канал': 'for subscribing to the channel',
     'Снять бур «НМ»': 'Remove «MN» drill',
+    'Отсек полон — находка ждёт тут': 'Cargo full — the find waits here',
+    'Отсек полон — руда раскрошилась': 'Cargo full — the ore crumbled',
+    'Отсек полон! Вези добычу на базу — новая руда больше не влезет.': 'Cargo is full! Take the loot to base — no more ore will fit.',
 }

@@ -495,9 +495,12 @@ function collect(k, x, y) {
     if (t >= 4) { SFX.gem(); haptic('success'); } else SFX.pick();
     if (t === 4 && !S.quests._firstFind) { S.quests._firstFind = 1; track('first_diamond_found'); }
     if (!S.tut.firstOre) { S.tut.firstOre = true; say('petrovich', t === 1 ? 'Iron! Good for reinforcement. The cargo hold isn\'t infinite — watch 📦.' : 'A valuable find! Bring it back to base — then it\'s money.'); }
-    if (S.cargo.length >= cargoMax()) say('alya', 'Cargo hold is full. Further loot will stay where it is — you can come back for it.', true);
+    if (S.cargo.length >= cargoMax()) say('alya', 'Cargo is full! Take the loot to base — no more ore will fit.', true);
   } else {
-    S.drops.push({ x, y, t, id: item.id }); floater(x, y, 'Cargo full', '#ff8a8a'); SFX.warn();
+    // обычная руда при полном отсеке просто крошится и исчезает; редкие находки остаются лежать — за ними можно вернуться
+    if (t >= 4) { S.drops.push({ x, y, t, id: item.id }); floater(x, y, 'Cargo full — the find waits here', '#ff8a8a'); }
+    else floater(x, y, 'Cargo full — the ore crumbled', '#ff8a8a');
+    SFX.warn();
   }
 }
 
@@ -1940,7 +1943,7 @@ function boot() {
   }
   resize();
   loadAll(saved => {
-    if (saved && saved.v === 1) { S = Object.assign(defaultState(), saved); if (!saved.wv) delete S.wv; if (saved.segT0 === undefined) S.segT0 = S.stats.playTime; applyStateToMap(); M.x = S.x; M.y = S.y; M.rx = M.x; M.ry = M.y; const k = idx(M.x, M.y); atBase = isOpenBase(k) ? baseAt[k] : -1; if (atBase < 0) run = { fuel0: S.fuel, maxHeat: 0, away: 0 }; }
+    if (saved && saved.v === 1) { S = Object.assign(defaultState(), saved); if (!saved.wv) delete S.wv; if (saved.segT0 === undefined) S.segT0 = S.stats.playTime; S.drops = (S.drops || []).filter(d => d.t >= 4); applyStateToMap(); M.x = S.x; M.y = S.y; M.rx = M.x; M.ry = M.y; const k = idx(M.x, M.y); atBase = isOpenBase(k) ? baseAt[k] : -1; if (atBase < 0) run = { fuel0: S.fuel, maxHeat: 0, away: 0 }; }
     else { S = defaultState(); setGeo(GEO_CUR); generate(S.seed); computeDist(); teleport(0); }
     reveal(M.x, M.y, 3);
     camX = M.x * TS - VW / 2; camY = M.y * TS - VH / 2;
