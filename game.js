@@ -15,8 +15,8 @@ const SEG = C.SEG, NCH = C.CHAPTERS, H = C.H, SURF = C.SURFACE, CT = C.CT, CB = 
 // Длины участков: последние два — длинные (финал можно долго и интересно копать).
 // Старые сохранения, где уже дошли до 9-го участка, остаются на прежней геометрии.
 // Геометрия карты по версиям сохранений: 1 — все по 22; 2 — длинный финал; 3 — каждый участок длиннее (текущая)
-const GEOS = { 1: Array(NCH).fill(SEG), 2: [22, 22, 22, 22, 22, 22, 22, 22, 40, 48], 3: [20, 22, 24, 26, 28, 30, 32, 34, 42, 50], 4: C.SEGL || Array(NCH).fill(SEG) };
-const GEO_CUR = 4;
+const GEOS = { 1: Array(NCH).fill(SEG), 2: [22, 22, 22, 22, 22, 22, 22, 22, 40, 48], 3: [20, 22, 24, 26, 28, 30, 32, 34, 42, 50], 4: [24, 27, 30, 33, 36, 39, 42, 45, 52, 60], 5: C.SEGL || Array(NCH).fill(SEG) };
+const GEO_CUR = 5;
 let SEGL = GEOS[GEO_CUR], BXS = [], W = 0, N = 0;
 function setGeo(v) {
   SEGL = GEOS[v] || GEOS[GEO_CUR]; BXS = [3]; for (let i = 0; i < NCH; i++) BXS.push(BXS[i] + SEGL[i]);
@@ -65,7 +65,8 @@ function generate(seed) {
   for (let c = 1; c < NCH; c++) {
     const nw = Math.max(1, Math.round(segLen(c) / 18));   // в длинных участках — несколько стен
     for (let w = 1; w <= nw; w++) { const wx = bx(c) + Math.floor(segLen(c) * w / (nw + 1));
-      for (let y = CT - 1; y <= CB + 1; y++) grid[idx(wx, y)] = C.corridorHard[c]; }
+      const th = c >= 3 ? 2 : 1;   // с 4-го участка стены толще
+      for (let dx = 0; dx < th; dx++) for (let y = SURF; y <= H - 2; y++) grid[idx(wx + dx, y)] = Math.max(grid[idx(wx + dx, y)], C.corridorHard[c]); }   // стена на всю высоту — не обойти
   }
   // базы
   for (let i = 0; i <= NCH; i++) {
@@ -133,7 +134,7 @@ function generate(seed) {
 // ---------- Состояние ----------
 let S = null;
 const defaultState = () => ({
-  v: 1, wv: 4, seed: (Math.random() * 1e9) | 0, coins: C.START_COINS,
+  v: 1, wv: 5, seed: (Math.random() * 1e9) | 0, coins: C.START_COINS,
   fuel: C.UPGRADES.tank.vals[0], hull: C.UPGRADES.hull.vals[0], heat: 0,
   x: bx(0), y: CB, dir: 'r',
   cargo: [], wh: { iron: 0, copper: 0, gold: 0, diamond: 0, colored: [] },
@@ -151,7 +152,7 @@ const tankMax = () => Math.round(upv('tank') * (S.shop && S.shop.tank_plus ? 1.3
 const hullMax = () => upv('hull');
 const cargoMax = () => upv('cargo');
 const consCap = () => 1 + (S.up.cargo >= 3 ? 1 : 0) + (S.up.cargo >= 5 ? 1 : 0);
-const drillCap = () => S.up.drill + 1 + (S.proto ? 2 : 0) + (S.legend ? 1 : 0);
+const drillCap = () => S.up.drill + 1 + (S.proto ? 1 : 0) + (S.legend ? 1 : 0);
 const drillDps = () => upv('drill') * (S.proto ? 1.7 : 1) * (S.legend ? 1.3 : 1) * (S.turboUntil > S.stats.playTime ? 2 : 1);
 const fenceX = () => S.built >= NCH ? W : bx(S.built + 1) + 2;
 const isOpenBase = k => baseAt[k] >= 0 && baseAt[k] <= S.built;
@@ -798,10 +799,14 @@ function showDrillOffer(need) {
   if (cost === null) h += `<div class="us">Обойди этот камень сверху или снизу</div>`;
   else if (S.refs.tokens) h += `<button class="btn good" data-act="free">🎟 Улучшить бур бесплатно</button>`;
   else if (S.coins >= cost) h += `<button class="btn" data-act="buy">⬆️ Улучшить бур · ${cost} 🪙</button>`;
-  else h += `<div class="un2">Нужно <b>${cost} 🪙</b>, у тебя ${Math.floor(S.coins)}.<br>Собирай руду 🪨🟠🟡 вверху и внизу — на базе она станет монетами. Или обойди камень.</div>`;
+  else {
+    h += `<div class="un2">Нужно <b>${cost} 🪙</b>, у тебя ${Math.floor(S.coins)}.<br>Собирай руду 🪨🟠🟡 вверху и внизу — на базе она станет монетами. Или обойди камень.</div>`;
+    if (F.shop && F.item('coins')) h += `<button class="btn good" data-act="stars" style="margin-top:6px">⭐ Премия бригаде: +400 🪙</button>`;
+  }
   el.innerHTML = h; el.classList.remove('hidden'); offerT = 5;
   const b = el.querySelector('[data-act]');
-  if (b) b.onclick = e => { e.stopPropagation(); if (doUpgrade('drill', b.dataset.act === 'free')) { toast('⛏ Бур → уровень ' + S.up.drill + '!'); el.classList.add('hidden'); offerT = 0; } };
+  if (b && b.dataset.act === 'stars') b.onclick = e => { e.stopPropagation(); el.classList.add('hidden'); offerT = 0; track('offer_click', { id: 'coins_wall' }); buy('coins'); };
+  else if (b) b.onclick = e => { e.stopPropagation(); if (doUpgrade('drill', b.dataset.act === 'free')) { toast('⛏ Бур → уровень ' + S.up.drill + '!'); el.classList.add('hidden'); offerT = 0; } };
 }
 ['pointerdown', 'pointerup'].forEach(t => $('upNow').addEventListener(t, e => e.stopPropagation()));
 

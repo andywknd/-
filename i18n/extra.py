@@ -1,3 +1,9 @@
 EXTRA = {
     '🌐 Язык / Language': '🌐 Язык / Language',
+    'Бур 2, Сканер 2': 'Drill 2, Scanner 2',
+    'Бур 4, Корпус 4': 'Drill 4, Hull 4',
+    'Бур 3, Бак 3': 'Drill 3, Tank 3',
+    'Бур 3, Корпус 2': 'Drill 3, Hull 2',
+    'Бур 4, Привод 3': 'Drill 4, Drive 3',
+    '⭐ Премия бригаде: +400 🪙': '⭐ Crew bonus: +400 🪙',
 }

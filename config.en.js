@@ -2,7 +2,7 @@
 // Все числа — стартовые гипотезы баланса (см. ТЗ §11).
 window.CFG = {
   SEG: 22,            // длина сегмента в клетках
-  SEGL: [24, 27, 30, 33, 36, 39, 42, 45, 52, 60],   // каждый участок длиннее предыдущего, финал — самый длинный
+  SEGL: [24, 27, 30, 34, 38, 42, 46, 50, 56, 64],   // каждый участок длиннее предыдущего, финал — самый длинный
   CHAPTERS: 10,
   H: 58,              // высота карты
   SURFACE: 7,         // первая строка грунта (выше — небо/море/дно)
@@ -64,7 +64,7 @@ window.CFG = {
     scanner: { name: 'Scanner', desc: 'Sees treasure farther and more precisely', vals: [5, 7, 9, 12, 15], fmt: v => v + ' cells' },
     drive:   { name: 'Drive', desc: 'Moves faster through the tunnel', vals: [1, 1.15, 1.3, 1.45, 1.6], fmt: v => '×' + v.toFixed(2) },
   },
-  UP_COST: [0, 70, 220, 600, 1500],      // цена перехода на ступень (индекс = новая ступень-1)
+  UP_COST: [0, 80, 320, 950, 2400],      // цена перехода на ступень (индекс = новая ступень-1)
   UP_MULT: { drill: 1.3, tank: 1, cooling: 0.9, hull: 1, cargo: 1.1, scanner: 0.8, drive: 0.9 },
 
   CONSUMABLES: {
@@ -78,9 +78,9 @@ window.CFG = {
   START_COINS: 40,
 
   // требования сегментов по главам
-  segReq: c => ({ iron: 5 + 2 * c, copper: 2 + 2 * c, reward: 60 + 35 * c }),
+  segReq: c => ({ iron: 5 + 2 * c, copper: 2 + 2 * c, reward: 40 + 12 * c }),   // награда за станцию скромная — на улучшения нужно добывать руду
   // максимальная прочность на обязательном маршруте и рекомендуемый бур
-  corridorHard: [2, 3, 3, 3, 3, 4, 4, 4, 5, 5],
+  corridorHard: [2, 3, 3, 4, 4, 4, 5, 5, 5, 5],   // с 4-го участка нужен бур 3, с 7-го — бур 4
 
   CHAPTERS_DATA: [
     { title: 'Chukotka. The start of something great', rec: 'Drill 1', joke: 'The first meters are the most important. And the dirtiest.',
@@ -91,26 +91,26 @@ window.CFG = {
       intro: [['petrovich', 'Permafrost ahead. Hard as yesterday\'s gingerbread.'],
               ['alya', 'New gauge 🌡 — heat. The drill heats up: when it turns red, stop and let it cool. Or upgrade the cooling.'],
               ['petrovich', 'One more thing: refueling isn\'t free anymore. Coins are taken automatically when you return to base.']] },
-    { title: 'First diamond', rec: 'Scanner 2', joke: 'The tunnel has temporarily become a jewelry business.',
+    { title: 'First diamond', rec: 'Drill 2, Scanner 2', joke: 'The tunnel has temporarily become a jewelry business.',
       intro: [['alya', 'The scanner finds diamonds below the corridor. Press 📡 — I\'ll show you where.'],
               ['petrovich', 'Just remember: the tunnel comes first. Diamonds are a nice bonus.']] },
-    { title: 'Under the seabed', rec: 'Hull 2', joke: 'Now it\'s a water park too.',
+    { title: 'Under the seabed', rec: 'Drill 3, Hull 2', joke: 'Now it\'s a water park too.',
       intro: [['alya', 'We\'re under the seabed. Blue drops in the rock are water pockets.'],
               ['alya', 'If you break one — rush to the marked pump and switch it on before everything floods.'],
               ['petrovich', 'New gauge 🛡 — hull. Water, gas and cave-ins scratch it. Repairs are at the base.']] },
-    { title: 'Island break', rec: 'Tank 3', joke: 'Found a note: "Who ate my sandwich? — Crew 2"',
+    { title: 'Island break', rec: 'Drill 3, Tank 3', joke: 'Found a note: "Who ate my sandwich? — Crew 2"',
       intro: [['petrovich', 'Above us are Big and Little Diomede islands. They\'re 4 km apart — and a whole day apart in time.'],
               ['petrovich', 'Deeper means richer veins. Your call: hurry or get rich.']] },
     { title: 'Very hard granite', rec: 'Drill 3, Cooling 3', joke: 'Hard science turned out to be literally hard.',
       intro: [['alya', 'Green spots are gas pockets. Hot drill + gas = a very short trip.'],
               ['alya', 'Approach gas with a cool drill. The cooling charge ❄️ is your friend.']] },
-    { title: 'International Date Line', rec: 'Drive 3', joke: 'Deadline — yesterday. Totally normal here.',
+    { title: 'International Date Line', rec: 'Drill 4, Drive 3', joke: 'Deadline — yesterday. Totally normal here.',
       intro: [['petrovich', 'We\'re crossing the Date Line. The clocks now say "yesterday".'],
               ['petrovich', 'Good news: we finished this stage yesterday. Bad news: we still have to dig it.']] },
     { title: 'The billionaire sent a drill', rec: 'Drill 4', joke: 'Update installed. The "back" button has been removed.',
       intro: [['billionaire', 'Guys! A revolutionary drill! Digs twice as fast! Heats up... also twice as fast.'],
               ['alya', 'You can install the prototype at the base for free. Just keep an eye on the temperature.']] },
-    { title: 'Alaska is close', rec: 'Hull 4', joke: 'Found oil. No exit yet.',
+    { title: 'Alaska is close', rec: 'Drill 4, Hull 4', joke: 'Found oil. No exit yet.',
       intro: [['petrovich', 'See the cracked ground? Dig under it and it\'ll collapse. On your head.'],
               ['bob', 'Hello, Russia! We\'re digging toward you! You count in meters, right?..']] },
     { title: 'Meeting under the strait', rec: 'Everything maxed', joke: 'They counted in feet. We counted in meters.',
