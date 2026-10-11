@@ -12,9 +12,17 @@ const rnd = (a, b) => a + Math.random() * (b - a);
 
 // ---------- Мир ----------
 const SEG = C.SEG, NCH = C.CHAPTERS, H = C.H, SURF = C.SURFACE, CT = C.CT, CB = C.CB;
-const bx = i => 3 + i * SEG;
-const W = bx(NCH) + 7;
-const N = W * H;
+// Длины участков: последние два — длинные (финал можно долго и интересно копать).
+// Старые сохранения, где уже дошли до 9-го участка, остаются на прежней геометрии.
+const SEGL_LONG = C.SEGL || Array(NCH).fill(SEG), SEGL_OLD = Array(NCH).fill(SEG);
+let SEGL = SEGL_LONG, BXS = [], W = 0, N = 0;
+function setGeo(long) {
+  SEGL = long ? SEGL_LONG : SEGL_OLD; BXS = [3]; for (let i = 0; i < NCH; i++) BXS.push(BXS[i] + SEGL[i]);
+  W = BXS[NCH] + 7; N = W * H;
+}
+setGeo(true);
+const bx = i => BXS[clamp(i, 0, NCH)];
+const segLen = i => SEGL[clamp(i, 0, NCH - 1)];
 const idx = (x, y) => y * W + x;
 const inb = (x, y) => x >= 0 && y >= 0 && x < W && y < H;
 
@@ -29,7 +37,7 @@ function vnoise(x, y, s) {
   const a = hash2(xi, yi, s), b = hash2(xi + 1, yi, s), c = hash2(xi, yi + 1, s), d = hash2(xi + 1, yi + 1, s);
   return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
 }
-function chapterOfX(x) { return clamp(Math.floor((x - 3) / SEG), 0, NCH - 1); }
+function chapterOfX(x) { for (let c = NCH - 1; c > 0; c--) if (x >= BXS[c]) return c; return 0; }
 
 function generate(seed) {
   const R = mulberry(seed);
@@ -53,8 +61,9 @@ function generate(seed) {
   }
   // стены, требующие нужного бура (обязательный маршрут)
   for (let c = 1; c < NCH; c++) {
-    const wx = bx(c) + Math.floor(SEG / 2);
-    for (let y = CT - 1; y <= CB + 1; y++) grid[idx(wx, y)] = C.corridorHard[c];
+    const nw = Math.max(1, Math.round(segLen(c) / 18));   // в длинных участках — несколько стен
+    for (let w = 1; w <= nw; w++) { const wx = bx(c) + Math.floor(segLen(c) * w / (nw + 1));
+      for (let y = CT - 1; y <= CB + 1; y++) grid[idx(wx, y)] = C.corridorHard[c]; }
   }
   // базы
   for (let i = 0; i <= NCH; i++) {
@@ -69,13 +78,13 @@ function generate(seed) {
   };
   const ri = (a, b) => a + Math.floor(R() * (b - a + 1));
   for (let c = 0; c < NCH; c++) {
-    const x0 = bx(c) + 2, x1 = bx(c + 1) - 2;
-    for (let i = 0; i < 7; i++) vein(1, ri(x0, x1), ri(CT - 3, CB + 4), ri(3, 5));
-    for (let i = 0; i < 4; i++) vein(1, ri(x0, x1), ri(CB + 4, CB + 14), ri(3, 6));
-    for (let i = 0; i < 5; i++) vein(2, ri(x0, x1), ri(CB + 1, CB + 12), ri(3, 5));
+    const x0 = bx(c) + 2, x1 = bx(c + 1) - 2, sm = segLen(c) / SEG;
+    for (let i = 0; i < 7 * sm; i++) vein(1, ri(x0, x1), ri(CT - 3, CB + 4), ri(3, 5));
+    for (let i = 0; i < 4 * sm; i++) vein(1, ri(x0, x1), ri(CB + 4, CB + 14), ri(3, 6));
+    for (let i = 0; i < 5 * sm; i++) vein(2, ri(x0, x1), ri(CB + 1, CB + 12), ri(3, 5));
     for (let i = 0; i < 2; i++) vein(2, ri(x0, x1), ri(CT - 2, CB + 1), ri(2, 4));
-    for (let i = 0; i < 5; i++) vein(3, ri(x0, x1), ri(CB + 6, H - 6), ri(2, 4));
-    const nd = 3 + Math.floor(c / 3) + (c === 2 ? 3 : 0);
+    for (let i = 0; i < 5 * sm; i++) vein(3, ri(x0, x1), ri(CB + 6, H - 6), ri(2, 4));
+    const nd = (3 + Math.floor(c / 3) + (c === 2 ? 3 : 0)) * sm;
     for (let i = 0; i < nd; i++) vein(4, ri(x0, x1), ri(SURF + 20, H - 3), ri(1, 3));
     // цветной алмаз — фиксированный тайник
     { const x = ri(x0, x1), y = ri(32, H - 4); const k = idx(x, y); grid[k] = Math.max(grid[k], 4); ore[k] = 5; oreId[k] = c; }
@@ -122,7 +131,7 @@ function generate(seed) {
 // ---------- Состояние ----------
 let S = null;
 const defaultState = () => ({
-  v: 1, seed: (Math.random() * 1e9) | 0, coins: C.START_COINS,
+  v: 1, wv: 2, seed: (Math.random() * 1e9) | 0, coins: C.START_COINS,
   fuel: C.UPGRADES.tank.vals[0], hull: C.UPGRADES.hull.vals[0], heat: 0,
   x: bx(0), y: CB, dir: 'r',
   cargo: [], wh: { iron: 0, copper: 0, gold: 0, diamond: 0, colored: [] },
@@ -159,9 +168,18 @@ const F = {
 };
 
 function applyStateToMap() {
+  // wv: 2 — новая геометрия; 1 — старая; нет — сохранение до обновления
+  let oldW = 0;
+  if (!S.wv) { if (S.built >= 9) S.wv = 1; else { S.wv = 2; setGeo(false); oldW = W; } }
+  setGeo(S.wv === 2);
   generate(S.seed);
   const dec = (str, arr) => { if (!str) return; const p = str.split(','); let pos = 0, val = 0; for (const s of p) { const n = +s; if (val) arr.fill(1, pos, pos + n); pos += n; val ^= 1; } };
-  dec(S._dug, dug); dec(S._exp, exp); dec(S._rf, rf);
+  if (oldW && oldW !== W) {
+    const remap = k => { const x = k % oldW, y = (k / oldW) | 0; return idx(x, y); };
+    const decR = (str, arr) => { if (!str) return; const tmp = new Uint8Array(oldW * H); dec(str, tmp); for (let k = 0; k < tmp.length; k++) if (tmp[k]) arr[remap(k)] = 1; };
+    decR(S._dug, dug); decR(S._exp, exp); decR(S._rf, rf);
+    S.fill = S.fill.map(remap); S.pins = S.pins.map(remap);
+  } else { dec(S._dug, dug); dec(S._exp, exp); dec(S._rf, rf); }
   for (let k = 0; k < N; k++) if (dug[k]) { grid[k] = 0; ore[k] = 0; haz[k] = 0; }
   for (const k of S.fill) { if (!rf[k]) { grid[k] = 8; ore[k] = 0; } }
   delete S._dug; delete S._exp; delete S._rf;
@@ -273,12 +291,13 @@ function haptic(kind) {
 
 // ---------- Ассеты ----------
 const IMG = {};
-['drill', 'station', 'petrovich', 'alya', 'bob', 'billionaire', 'train', 'drill_gold', 'cat_sit', 'i_tank', 'i_rocket', 'i_ins'].forEach(n => {
+['drill', 'drill_2', 'drill_3', 'drill_4', 'drill_5', 'att/tank', 'att/cool', 'att/radar', 'att/cargo', 'att/armor', 'att/turbo', 'station', 'petrovich', 'alya', 'bob', 'billionaire', 'train', 'drill_gold', 'cat_sit', 'i_tank', 'i_rocket', 'i_ins'].forEach(n => {
   const i = new Image(); i.src = 'assets/' + n + '.webp'; IMG[n] = i;
 });
 const ok = i => i && i.complete && i.naturalWidth > 0;
 // ---------- Нарисованные иконки вместо эмодзи ----------
 const ICON_FILE = { scanner: 'up_scanner', hull: 'up_hull', drill: 'drill', cat: 'shop_cat', lift: 'shop_lift', train: 'train' };
+const upImg = (k, n) => n > 1 ? `assets/up/${k}_${n}.webp` : `assets/up_${k}.webp`;
 const icSrc = n => 'assets/' + (ICON_FILE[n] || 'i/' + n) + '.webp';
 const ICI = {};
 function drawIc(n, x, y, size) {
@@ -286,12 +305,12 @@ function drawIc(n, x, y, size) {
   if (!ok(im)) return; const w = size, h = size * im.naturalHeight / im.naturalWidth;
   cx.drawImage(im, x - w / 2, y - h / 2, w, h);
 }
-const EMO = { '🪙': 'coin', '💰': 'coin', '⛽': 'fuel', '📦': 'cargo', '🎒': 'cargo', '🌡': 'heat', '🛡': 'hull', '🪨': 'iron', '🟠': 'copper', '🟡': 'gold',
+const EMO = { '🌊': 'pump', '🪙': 'coin', '💰': 'coin', '⛽': 'fuel', '📦': 'cargo', '🎒': 'cargo', '🌡': 'heat', '🛡': 'hull', '🪨': 'iron', '🟠': 'copper', '🟡': 'gold',
   '💎': 'diamond', '✨': 'diamond', '💗': 'pinkgem', '🏁': 'flag', '🎯': 'flag', '🏔': 'mountain', '👥': 'friends', '🙂': 'friends', '🎁': 'gift', '🎟': 'ticket',
   '📨': 'envelope', '⚙': 'gear', '🏠': 'gear', '⭐': 'star', '🔧': 'repair', '❄': 'coolant', '🚰': 'pump', '🧰': 'container', '📍': 'pin', '☁': 'gas',
   '🦣': 'mammoth', '🛢': 'oil', '📄': 'doc', '📋': 'doc', '⛏': 'pickaxe', '👆': 'hand', '🏆': 'trophy', '📣': 'megaphone', '📲': 'megaphone', '⚡': 'bolt',
   '📡': 'scanner', '🚜': 'drill', '🐈': 'cat', '🚀': 'lift', '🚃': 'train', '🚇': 'train', '🚂': 'train' };
-const EMO_TXT = { '✅': '✓', '✔': '✓', '➡': '→', '⬆': '↑', '⬇': '↓', '➕': '+' };
+const EMO_TXT = { '✕': '×', '✖': '×', '▶': '›', '✅': '✓', '✔': '✓', '➡': '→', '⬆': '↑', '⬇': '↓', '➕': '+' };
 const EMO_RE = /(\p{Extended_Pictographic}|[\u2700-\u27BF\u2B06\u2B07\u2B50])(\uFE0F|\u200D\p{Extended_Pictographic}\uFE0F?)*/gu;
 function iconizeText(node) {
   const t = node.nodeValue; if (!t || !EMO_RE.test(t)) return; EMO_RE.lastIndex = 0;
@@ -518,6 +537,27 @@ function evacuate(cause) {
     } }]);
 }
 
+let seaT = 0, seaWarned = false, seaFrame = false;
+function flood() {
+  paused = true; SFX.warn(); haptic('error'); track('flood', { ch: S.built });
+  const f = $('flood'); f.classList.remove('hidden'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+  setTimeout(() => {
+    const uniq = S.cargo.filter(it => it.t >= 5), lost = S.cargo.length - uniq.length;
+    modal(`<div class="fldimg">🌊</div><h2 style="text-align:center">Тоннель затопило!</h2>
+      <p style="text-align:center">Бур пробил дно пролива — вода хлынула внутрь. Насосы всё откачали, но вылазку придётся начать заново со станции.</p>
+      <p style="text-align:center;color:#9db4c2;font-size:13px">${lost ? 'Обычная добыча утонула (' + lost + ' шт.). ' : ''}Тоннель, улучшения и монеты на месте.<br>Совет: копай под морем, а не в него ↑</p>`,
+      [{ t: 'Начать заново', cls: 'btn', fn: () => {
+        f.classList.add('hidden'); f.classList.remove('go');
+        S.cargo = uniq; S.stats.floods = (S.stats.floods || 0) + 1; S.stats.segEvac++;
+        leak = null; collapses = []; teleport(S.lastBase);
+        S.fuel = Math.max(S.fuel, tankMax() * .5); S.hull = Math.max(S.hull, hullMax() * .5); S.heat = 0;
+        dirty = true; save(true); paused = false;
+        setTimeout(() => say('petrovich', 'Вода — штука мокрая. Под дном копаем, а не сквозь него!', true), 400);
+        onArriveBase(S.lastBase, true);
+      } }]);
+  }, 1500);
+}
+
 function teleport(b) { M.x = bx(b); M.y = CB; M.rx = M.x; M.ry = M.y; M.st = 'idle'; S.x = M.x; S.y = M.y; reveal(M.x, M.y, 3); atBase = b; trail = []; }
 
 function arrive() {
@@ -628,7 +668,7 @@ function showDrillOffer(need) {
   const el = $('upNow'), cost = upCost('drill');
   const mx = M.rx * TS - camX + TS / 2, my = M.ry * TS - camY;
   el.style.left = clamp(mx, 120, VW - 120) + 'px'; el.style.top = Math.max(110, my - 120) + 'px';
-  let h = `<div class="ut">🪨 Слишком твёрдо!</div><div class="us">Нужен бур уровня ${need} · сейчас ${S.up.drill}</div>`;
+  let h = `${cost !== null ? `<img class="unimg" src="${upImg('drill', S.up.drill + 1)}" alt="">` : ''}<div class="ut">🪨 Слишком твёрдо!</div><div class="us">Нужен бур уровня ${need} · сейчас ${S.up.drill}</div>`;
   if (cost === null) h += `<div class="us">Обойди этот камень сверху или снизу</div>`;
   else if (S.refs.tokens) h += `<button class="btn good" data-act="free">🎟 Улучшить бур бесплатно</button>`;
   else if (S.coins >= cost) h += `<button class="btn" data-act="buy">⬆️ Улучшить бур · ${cost} 🪙</button>`;
@@ -695,6 +735,12 @@ function update(dt) {
           S.fuel -= .8 * dt;
           M.drillT += dt; if (M.drillT > .12) { M.drillT = 0; SFX.drill(h); particles.push({ x: tx + .5 - dx * .45, y: ty + .5 - dy * .45, vx: rnd(-2, 2) - dx * 2, vy: rnd(-3, 0), life: .4, c: PAL[grid[k]] ? PAL[grid[k]][2] : '#aaa' }); }
           if (dmg[k] >= h) { breakCell(tx, ty); S.fuel -= .2; startMove(tx, ty, .16 / speed); }
+        } else if (ty < SURF && inb(tx, ty) && tx < fenceX()) {
+          // бурим вверх в дно пролива — если не отпустить, тоннель затопит
+          drilling = true; seaT += dt; seaFrame = true;
+          if (Math.random() < .5) particles.push({ x: tx + .5 + rnd(-.4, .4), y: ty + 1, vx: rnd(-1.5, 1.5), vy: rnd(.5, 2.5), life: .5, c: '#7cc8ff' });
+          if (seaT > .15 && !seaWarned) { seaWarned = true; floater(tx, ty + 1, 'Стой! Сверху море — отпусти!', '#9fd8ff'); SFX.warn(); haptic('warning'); }
+          if (seaT > 1.3) { seaT = 0; flood(); }
         } else if (performance.now() - lastTip > 2500) {
           lastTip = performance.now();
           if (tx >= fenceX() && ty >= SURF) floater(tx, ty, 'Дальше пока закрыто 🚧 Сначала построй этот участок', '#ffd27a');
@@ -704,6 +750,8 @@ function update(dt) {
       }
     }
   }
+  if (!seaFrame && seaT > 0) { seaT = Math.max(0, seaT - dt * 2); if (!seaT) seaWarned = false; }
+  seaFrame = false;
   if (!drilling) { M.drillK = -1; S.heat -= cool * dt; } else S.heat -= cool * .35 * dt;
   S.heat = clamp(S.heat, 0, 100);
   if (S.heat >= 100) S.hull -= 5 * dt;
@@ -822,7 +870,7 @@ function drawSurface(ts, ox, oy) {
   const shore = (xa, xb, left) => { cx.beginPath(); const a = xa * ts - ox, b = xb * ts - ox; cx.moveTo(a, seaBot); for (let i = 0; i <= 10; i++) { const x = a + (b - a) * i / 10; const hgt = ts * (1.2 + Math.sin(i * 1.3 + (left ? 0 : 2)) * .5 + (left ? (10 - i) : i) * .12); cx.lineTo(x, seaTop - hgt + ts * 1.6); } cx.lineTo(b, seaBot); cx.closePath(); cx.fill(); cx.fillStyle = '#7b6a5a'; cx.fillRect(a, seaTop + ts * 1.6, b - a, seaBot - seaTop - ts * 1.6); cx.fillStyle = '#e8f2f7'; };
   shore(0, 8, true); shore(W - 9, W, false);
   // острова Диомида
-  const mid = bx(4) + SEG / 2;
+  const mid = bx(4) + segLen(4) / 2;
   [[mid - 6, mid - 2], [mid + 2, mid + 5]].forEach(([a, b], i) => { cx.fillStyle = i ? '#dfe9ee' : '#e8f2f7'; cx.beginPath(); cx.moveTo(a * ts - ox, seaTop + ts * 1.3); cx.quadraticCurveTo((a + b) / 2 * ts - ox, seaTop - ts * (i ? 1.2 : 1.8), b * ts - ox, seaTop + ts * 1.3); cx.fill(); });
   // волны
   cx.fillStyle = 'rgba(255,255,255,.18)';
@@ -867,17 +915,26 @@ function drawMachine(ts, ox, oy) {
   cx.rotate(rot); cx.scale(flip, 1);
   const s = ts * 1.22;
   if (S.heat > 75) { cx.shadowColor = '#ff4a1a'; cx.shadowBlur = 14 + Math.sin(time * 12) * 6; }
-  const spr = S.shop.skin_gold ? (ok(IMG.drill_gold) ? IMG.drill_gold : goldSprite()) : IMG.drill;
-  if (ok(IMG.drill)) { const sw = spr.naturalWidth || spr.width, sh = spr.naturalHeight || spr.height; const dh = s * sh / sw; cx.drawImage(spr, -s / 2, -dh / 2 - ts * .02, s, dh); }
+  const lvSpr = S.up.drill > 1 && ok(IMG['drill_' + S.up.drill]) ? IMG['drill_' + S.up.drill] : IMG.drill;
+  const spr = S.shop.skin_gold ? (ok(IMG.drill_gold) ? IMG.drill_gold : goldSprite()) : lvSpr;
+  const sw0 = spr.naturalWidth || spr.width || 256, sh0 = spr.naturalHeight || spr.height || 190, dh = s * sh0 / sw0;
+  // навесное оборудование: видно, что улучшено (растёт с уровнем)
+  const att = (n, x, y, w, ax, ay) => { const im = IMG['att/' + n]; if (!ok(im)) return; const h = w * im.naturalHeight / im.naturalWidth; cx.drawImage(im, x - w * ax, y - h * ay, w, h); };
+  const L = k => S.up[k], g = k => .85 + (L(k) - 2) * .09;
+    cx.shadowBlur = 0;
+  if (L('cargo') >= 2) att('cargo', -s * .44, dh * .5, s * .5 * g('cargo'), 1, 1);
+  if (L('drive') >= 2) {
+    att('turbo', -s * .34, -dh * .26, s * .32 * g('drive'), .9, .5);
+  }
+  if (L('tank') >= 2) att('tank', -s * .4, dh * .14, s * .32 * g('tank'), .8, .5);
+  if (S.heat > 75) { cx.shadowColor = '#ff4a1a'; cx.shadowBlur = 14 + Math.sin(time * 12) * 6; }
+  if (ok(spr) || spr.getContext) cx.drawImage(spr, -s / 2, -dh / 2 - ts * .02, s, dh);
   else { cx.fillStyle = '#ff9d2e'; cx.fillRect(-ts * .4, -ts * .3, ts * .6, ts * .6); cx.fillStyle = '#aaa'; cx.beginPath(); cx.moveTo(ts * .2, -ts * .3); cx.lineTo(ts * .5, 0); cx.lineTo(ts * .2, ts * .3); cx.fill(); }
   cx.shadowBlur = 0;
-  // улучшения видны на машине
-  const lvColors = ['#888', '#cd7f32', '#d8dde3', '#ffd84a', '#7fe9ff', '#d27bff'];
-  cx.fillStyle = S.proto ? '#ff3df0' : lvColors[S.up.drill]; cx.fillRect(s * .16, -s * .03, s * .05, s * .2);
-  if (S.up.tank >= 3) { cx.fillStyle = '#c0392b'; cx.fillRect(-s * .46, -s * .2, s * .1, s * .22); }
-  if (S.up.cooling >= 3) { cx.fillStyle = '#7fd0ff'; cx.fillRect(-s * .25, -s * .38, s * .18, s * .05); }
-  if (S.up.scanner >= 3) { cx.strokeStyle = '#9ff'; cx.lineWidth = 2; cx.beginPath(); cx.moveTo(-s * .05, -s * .3); cx.lineTo(-s * .05, -s * .48); cx.stroke(); cx.fillStyle = '#9ff'; cx.beginPath(); cx.arc(-s * .05, -s * .5, 3, 0, 7); cx.fill(); }
-  if (S.up.hull >= 3) { cx.strokeStyle = 'rgba(200,210,220,.9)'; cx.lineWidth = 2; cx.strokeRect(-s * .38, -s * .08, s * .45, s * .2); }
+  if (L('cooling') >= 2) att('cool', -s * .2, -dh * .3, s * .32 * g('cooling'), .5, .9);
+  if (L('scanner') >= 2) { att('radar', s * .04, -dh * .34, s * .22 * g('scanner'), .5, .95); if (Math.sin(time * 5) > .6) { cx.fillStyle = '#7dff9a'; cx.beginPath(); cx.arc(s * .02, -dh * .34 - s * .17 * g('scanner'), 2.5, 0, 7); cx.fill(); } }
+  if (L('hull') >= 2) att('armor', -s * .08, dh * .34, s * .56 * g('hull'), .5, .5);
+  if (S.proto) { cx.fillStyle = '#ff3df0'; cx.fillRect(s * .16, -s * .03, s * .05, s * .2); }
   if (S.shop.tank_plus && ok(IMG.i_tank)) { const th = s * .34, tw2 = th * IMG.i_tank.naturalWidth / IMG.i_tank.naturalHeight; cx.drawImage(IMG.i_tank, -s * .5 - tw2 * .6, -th * .75, tw2, th); }
   if (S.shop.insurance && ok(IMG.i_ins)) cx.drawImage(IMG.i_ins, -s * .14, s * .0, s * .16, s * .16);
   if (S.shop.lift && ok(IMG.i_rocket)) {
@@ -1106,7 +1163,7 @@ const UP_ICON = { drill: '⛏', tank: '⛽', cargo: '📦', cooling: '❄️', s
 const ORE_ICON = { 1: '🪨', 2: '🟠', 3: '🟡', 4: '💎', 5: '💗', 6: '📦' };
 
 function routeBar() {
-  const segFrac = S.built < NCH ? clamp(1 - segGap / SEG, 0, 1) : 0;
+  const segFrac = S.built < NCH ? clamp(1 - segGap / segLen(S.built), 0, 1) : 0;
   const p = Math.round((S.built + segFrac) / NCH * 100);
   let dots = '';
   for (let i = 0; i <= NCH; i++) dots += `<i class="${i <= S.built ? 'on' : ''}" style="left:${i / NCH * 100}%"></i>`;
@@ -1120,6 +1177,24 @@ function openBase() {
   updGap();
   const pips = n => '<span class="pips">' + [1, 2, 3, 4, 5].map(i => `<i class="${i <= n ? 'on' : ''}"></i>`).join('') + '</span>';
   let h = '';
+  // 1) Улучшения — первым блоком
+  const tk = S.refs.tokens;
+  h += `<div class="ups-h"><span>⚙️ Улучшения</span><b>${tk ? '🎟 ' + tk + ' · ' : ''}🪙 ${Math.floor(S.coins)}</b></div><div class="ups">` + Object.keys(C.UPGRADES).filter(k => F.up(k)).map(k => {
+    const u = C.UPGRADES[k], n = S.up[k], cost = upCost(k);
+    return `<div class="up lv${n}"><img class="uimg" src="${upImg(k, n)}" alt="" onerror="this.src='assets/up_${k}.webp'"><div class="un">${u.name} <small>ур. ${n}</small></div>${pips(n)}
+      <div class="uv">${cost !== null ? u.fmt(u.vals[n - 1]) + ' → <b>' + u.fmt(u.vals[n]) + '</b>' : 'максимум'}</div>
+      ${cost === null ? '<b class="ok">MAX ✔</b>' : tk ? `<button class="btn good" data-free="${k}">🎟 Бесплатно</button>` : `<button class="btn" data-up="${k}" ${S.coins < cost ? 'disabled' : ''}>${cost} 🪙</button>`}
+      <div class="uh">${u.desc}</div></div>`;
+  }).join('') + `</div>`;
+  // 2) Цель и кнопка «дальше»
+  if (S.built < NCH) {
+    const next = stationName(S.built + 1);
+    h += `<div class="goal"><div class="gt">🎯 Цель: докопаться до Аляски</div>${routeBar()}
+      <div class="gnext">До «${next}» — <b>${segGap} ${cellsWord(segGap)}</b> вправо ➡️</div>
+      <button class="btn good wide big" id="goBtn">Продолжить тоннель →</button>
+      <div class="bonus">💎 Руда и алмазы — бонус: сами меняются на 🪙 для улучшений</div></div>`;
+  } else h += `<div class="goal"><div class="gt">🏁 Континенты соединены!</div>${routeBar()}<button class="btn good wide big" id="goBtn">Копать дальше ради алмазов</button></div>`;
+  // 3) Итоги вылазки
   const sm = baseSummary;
   if (sm) {
     const loot = Object.entries(sm.cnt).map(([t, n]) => `<span class="lt">${ORE_ICON[t]}<small>×${n}</small></span>`).join('');
@@ -1129,25 +1204,13 @@ function openBase() {
       ${sm.extra.map(([i, n]) => `<div class="ex">${i} ${n} — в коллекцию!</div>`).join('')}
       <div class="svc">⛽🔧 ${sm.free ? 'заправка бесплатно' : sm.service ? '−' + sm.service + ' 🪙' : 'бак полный'}</div></div>`;
   }
-  if (S.built < NCH) {
-    const next = stationName(S.built + 1);
-    h += `<div class="goal"><div class="gt">🎯 Цель: докопаться до Аляски</div>${routeBar()}
-      <div class="gnext">До «${next}» — <b>${segGap} ${cellsWord(segGap)}</b> вправо ➡️</div>
-      <button class="btn good wide big" id="goBtn">Продолжить тоннель →</button>
-      <div class="bonus">💎 Руда и алмазы — бонус: сами меняются на 🪙 для улучшений</div></div>`;
-  } else h += `<div class="goal"><div class="gt">🏁 Континенты соединены!</div>${routeBar()}<button class="btn good wide big" id="goBtn">Копать дальше ради алмазов</button></div>`;
   if (refReady()) h += inviteBlock();
-  // улучшения — карточки
-  const tk = S.refs.tokens;
-  h += `<div class="ups-h"><span>⚙️ Улучшения</span><b>${tk ? '🎟 ' + tk + ' · ' : ''}🪙 ${Math.floor(S.coins)}</b></div><div class="ups">` + Object.keys(C.UPGRADES).filter(k => F.up(k)).map(k => {
-    const u = C.UPGRADES[k], n = S.up[k], cost = upCost(k);
-    return `<div class="up"><img class="uimg" src="assets/up_${k}.webp" alt="" onerror="this.outerHTML='<div class=ui>${UP_ICON[k]}</div>'"><div class="un">${u.name}</div>${pips(n)}
-      <div class="uv">${cost !== null ? u.fmt(u.vals[n - 1]) + ' → <b>' + u.fmt(u.vals[n]) + '</b>' : 'максимум'}</div>
-      ${cost === null ? '<b class="ok">MAX ✔</b>' : tk ? `<button class="btn good" data-free="${k}">🎟 Бесплатно</button>` : `<button class="btn" data-up="${k}" ${S.coins < cost ? 'disabled' : ''}>${cost} 🪙</button>`}
-      <div class="uh">${u.desc}</div></div>`;
-  }).join('') + `</div>`;
+  // 4) Расходники — крупные карточки
   const cons = ['can', 'rep', 'cool'].filter(k => F.cons(k));
-  if (cons.length) h += `<div class="ups-h"><span>🎒 С собой в вылазку</span></div><div class="cons">` + cons.map(k => { const c = C.CONSUMABLES[k]; return `<button class="btn sec2" data-cons="${k}" ${S.cons[k] >= consCap() || S.coins < c.price ? 'disabled' : ''}>${c.icon} ${S.cons[k]}/${consCap()} · ${c.price}🪙</button>`; }).join('') + `</div>`;
+  const CONS_IC = { can: 'fuel', rep: 'repair', cool: 'coolant' };
+  if (cons.length) h += `<div class="ups-h"><span>🎒 Взять с собой в вылазку</span></div><div class="consc">` + cons.map(k => { const c = C.CONSUMABLES[k], full = S.cons[k] >= consCap();
+    return `<div class="cc"><img src="${icSrc(CONS_IC[k])}" alt=""><div class="cn">${c.name}</div><div class="cd">${c.desc}</div><div class="cq">в машине: <b>${S.cons[k]}/${consCap()}</b></div>
+      <button class="btn" data-cons="${k}" ${full || S.coins < c.price ? 'disabled' : ''}>${full ? 'Полно' : c.price + ' 🪙'}</button></div>`; }).join('') + `</div>`;
   if (S.built === 7) h += `<button class="btn ${S.proto ? 'sec2' : ''} wide" id="protoBtn">🚀 ${S.proto ? 'Снять прототип бура' : 'Поставить прототип бура (быстрее, но греется)'}</button>`;
   const aq = F.quests ? activeQuests() : [];
   if (aq.length) h += `<div class="ups-h"><span>📋 Задания</span></div>` + aq.map(q => `<div class="qrow">• ${q.text} <b>+${q.reward}🪙</b></div>`).join('');
@@ -1225,7 +1288,7 @@ function checkRefs(force) {
 // Станция открывается сама, как только до неё прокопан ход
 function buildSegment() {
   const p = segPath(); if (!p || !p.connected) return;
-  const reward = C.segReq(S.built).reward;
+  const reward = Math.round(C.segReq(S.built).reward * segLen(S.built) / SEG);
   S.coins += reward;
   for (const k of p.path) rf[k] = 1;
   for (let y = CT; y <= CB; y++) for (let x = bx(S.built) - 1; x <= bx(S.built) + 1; x++) rf[idx(x, y)] = 1;
@@ -1446,7 +1509,7 @@ function renderFinale(dt) {
 function showTitle() {
   paused = true; $('title').classList.remove('hidden'); $('hud').classList.add('hidden'); $('controls').classList.add('hidden');
   if (S) $('tprog').innerHTML = `Тоннель: <b>${pct()}%</b> · ${S.built < NCH ? 'Глава ' + (S.built + 1) + ': ' + C.CHAPTERS_DATA[S.built].title : 'Континенты соединены!'}<br>💎 ${S.stats.diamonds} · 🪙 ${Math.floor(S.coins)}`;
-  $('playBtn').textContent = S && (S.stats.sorties > 0 || S.built > 0) ? '▶ Продолжить' : '▶ Копать';
+  $('playBtn').innerHTML = '<img class="bi" src="assets/i/dig.webp" alt="">' + (S && (S.stats.sorties > 0 || S.built > 0) ? 'Продолжить' : 'Копать');
 }
 function showGame() {
   $('title').classList.add('hidden'); $('hud').classList.remove('hidden'); $('controls').classList.remove('hidden');
@@ -1468,7 +1531,7 @@ $('sheetX').addEventListener('click', () => { if (!$('title').classList.contains
 function newCampaign() {
   const keep = S ? { coll: S.coll, ach: S.ach, set: S.set, completions: S.completions } : {};
   S = Object.assign(defaultState(), keep); S.tut.intro = false;
-  generate(S.seed); computeDist(); teleport(0); reveal(M.x, M.y, 3);
+  setGeo(true); generate(S.seed); computeDist(); teleport(0); reveal(M.x, M.y, 3);
   $('finale').classList.add('hidden'); $('sheet').classList.add('hidden'); $('modal').classList.add('hidden');
   dirty = true; save(true); showTitle();
 }
@@ -1521,8 +1584,8 @@ function boot() {
   }
   resize();
   loadAll(saved => {
-    if (saved && saved.v === 1) { S = Object.assign(defaultState(), saved); applyStateToMap(); M.x = S.x; M.y = S.y; M.rx = M.x; M.ry = M.y; const k = idx(M.x, M.y); atBase = isOpenBase(k) ? baseAt[k] : -1; if (atBase < 0) run = { fuel0: S.fuel, maxHeat: 0, away: 0 }; }
-    else { S = defaultState(); generate(S.seed); computeDist(); teleport(0); }
+    if (saved && saved.v === 1) { S = Object.assign(defaultState(), saved); if (!saved.wv) delete S.wv; applyStateToMap(); M.x = S.x; M.y = S.y; M.rx = M.x; M.ry = M.y; const k = idx(M.x, M.y); atBase = isOpenBase(k) ? baseAt[k] : -1; if (atBase < 0) run = { fuel0: S.fuel, maxHeat: 0, away: 0 }; }
+    else { S = defaultState(); setGeo(true); generate(S.seed); computeDist(); teleport(0); }
     reveal(M.x, M.y, 3);
     camX = M.x * TS - VW / 2; camY = M.y * TS - VH / 2;
     showTitle(); track('open', { start: inTG ? tg.initDataUnsafe.start_param || '' : '' });
@@ -1530,6 +1593,6 @@ function boot() {
   });
 }
 boot();
-window.__dig = { get S() { return S; }, M, segPath, teleport, buildSegment, fenceX, openBase, showDrillOffer,
+window.__dig = { get S() { return S; }, M, banner, flood, bx, get W() { return W; }, segPath, teleport, buildSegment, fenceX, openBase, showDrillOffer,
   digRow: (x0, x1, y) => { for (let x = x0; x <= x1; x++) { const k = idx(x, y); if (grid[k] < 6) { grid[k] = 0; dug[k] = 1; exp[k] = 1; } } computeDist(); }, bx, finale };
 })();
