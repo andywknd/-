@@ -69,4 +69,9 @@ EXTRA = {
     'Отсек полон — находка ждёт тут': 'Cargo full — the find waits here',
     'Отсек полон — руда раскрошилась': 'Cargo full — the ore crumbled',
     'Отсек полон! Вези добычу на базу — новая руда больше не влезет.': 'Cargo is full! Take the loot to base — no more ore will fit.',
+    'Подпишись на канал «Новости Москвы» — и фирменный красный бур с логотипом твой. Копает чуть быстрее.': 'Subscribe to the «Moscow News» channel — and the branded red drill with the logo is yours. Digs a little faster.',
+    'Золотой бур — в «Лавке миллиардера» внутри Telegram': "The golden drill is in the «Billionaire's shop» inside Telegram",
+    'Платиновый бур выдаётся за прохождение кампании': 'The platinum drill is awarded for finishing the campaign',
+    'за финал': 'for the finale',
+    'Позже': 'Later',
 }

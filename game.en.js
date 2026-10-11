@@ -1570,19 +1570,26 @@ function nmSubscribe() {
   track('nm_open'); nmPending = true;
   try { if (inTG && tg.openTelegramLink) tg.openTelegramLink(NM_LINK); else window.open(NM_LINK, '_blank'); } catch (e) { location.href = NM_LINK; }
 }
-function nmCheck(manual) {
+// Нажали на закрытый бур «НМ»: подписан — выдаём сразу, нет — предлагаем подписаться
+function nmClaim(reopen) {
+  nmCheck(false, () => modal(`<div style="text-align:center"><img src="assets/drill_nm.webp" alt="" style="width:150px;height:110px;object-fit:contain"></div>
+    <h2 style="text-align:center">«Moscow News» drill</h2><p style="text-align:center">Subscribe to the «Moscow News» channel — and the branded red drill with the logo is yours. Digs a little faster.</p>`,
+    [{ t: 'Subscribe', cls: 'btn bad', fn: () => { paused = !$('sheet').classList.contains('hidden'); nmSubscribe(); } }, { t: 'Later', cls: 'btn sec2', fn: () => { paused = !$('sheet').classList.contains('hidden'); } }]), reopen);
+}
+function nmCheck(manual, onNo, onYes) {
   if (!S || S.shop.nm) return;
-  if (!inTG || !window.DIG_API || !tg.initData) { if (manual) toast('Checking works inside Telegram'); return; }
+  if (!inTG || !window.DIG_API || !tg.initData) { if (onNo) onNo(); else if (manual) toast('Checking works inside Telegram'); return; }
   fetch(window.DIG_API + '/sub', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ init: tg.initData }) })
     .then(r => r.ok ? r.json() : null).then(d => {
       if (d && d.sub) {
         nmPending = false; S.shop.nm = true; S.set.off_nm = false; if (skinsOpen()) S.skin = 'nm'; dirty = true; save(true);
         track('nm_sub'); SFX.build(); haptic('success');
-        if (!$('sheet').classList.contains('hidden') && atBase >= 0) openBase();
+        if (onYes) onYes(); else if (!$('sheet').classList.contains('hidden') && atBase >= 0) openBase();
         showBrag('assets/drill_nm.webp', 'Branded drill unlocked!', 'Thanks for subscribing to «Moscow News»');
         setTimeout(() => say('petrovich', 'Wow, the branded «Moscow News» drill! Red, with the logo — and it digs a bit faster.', true), 900);
-      } else if (manual) toast(d && d.err ? 'Couldn\'t check, try again a bit later' : 'Subscription not found yet — subscribe to the channel and tap again');
-    }).catch(() => { if (manual) toast('No connection to the server, please try later'); });
+      } else if (onNo) onNo();
+      else if (manual) toast(d && d.err ? 'Couldn\'t check, try again a bit later' : 'Subscription not found yet — subscribe to the channel and tap again');
+    }).catch(() => { if (onNo) onNo(); else if (manual) toast('No connection to the server, please try later'); });
 }
 function showOffer() {
   if (S.built < 1 || S.built >= NCH || S.offerShown === S.built) return;
@@ -1663,11 +1670,20 @@ function skinsHtml() {
   const cur = curSkin() || (S.legend ? 'legend' : 'd' + S.up.drill);
   return `<div class="ups-h"><span>🎨 Rig skin</span></div><div class="skins">` + SKINS.map(k => {
     const locked = k.lock && k.lock();
-    return `<button class="skin ${k.id === cur ? 'on' : ''} ${locked ? 'lock' : ''}" data-skin="${k.id}" ${locked ? 'disabled' : ''}><img src="assets/${k.img}.webp" alt=""><span>${k.name}</span>${locked ? (k.id === 'nm' ? '<i>for subscribing</i>' : '<i>⭐ in shop</i>') : ''}</button>`;
+    const why = k.id === 'nm' ? 'for subscribing' : k.id === 'legend' ? 'for the finale' : '⭐ in shop';
+    return `<button class="skin ${k.id === cur ? 'on' : ''} ${locked ? 'lock' : ''}" data-skin="${k.id}" ${locked ? 'data-locked="1"' : ''}><img src="assets/${k.img}.webp" alt=""><span>${k.name}</span>${locked ? `<i>${why}</i>` : ''}</button>`;
   }).join('') + `</div>`;
 }
 function bindSkins(reopen) {
-  $('sheetBody').querySelectorAll('[data-skin]').forEach(b => b.onclick = () => { S.skin = b.dataset.skin; dirty = true; save(true); SFX.coin(); track('skin', { id: S.skin }); reopen(); });
+  $('sheetBody').querySelectorAll('[data-skin]').forEach(b => b.onclick = () => {
+    const id = b.dataset.skin;
+    if (b.dataset.locked) {   // закрытый скин: «НМ» — проверяем подписку, золото — в лавку, платина — после финала
+      if (id === 'nm') nmClaim(reopen);
+      else if (id === 'gold') { if (shopReady()) buy('skin_gold'); else toast('The golden drill is in the «Billionaire\'s shop» inside Telegram'); }
+      else toast('The platinum drill is awarded for finishing the campaign');
+      return;
+    }
+    S.skin = id; dirty = true; save(true); SFX.coin(); track('skin', { id: S.skin }); reopen(); });
 }
 function openBugReport() {
   openSheet('Report a bug', `<div class="sec"><div style="font-size:13.5px;line-height:1.45;margin-bottom:8px">What went wrong? Briefly describe what you were doing and what happened. The game developers will get your message right away.</div>
