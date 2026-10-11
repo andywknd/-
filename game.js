@@ -675,7 +675,7 @@ function trComplete() {
   trFx(T0.id, trCompleteModal);
 }
 function trCompleteModal() {
-  const T = TREASURES[S.tr.t]; S.coins += T.reward; S.coll.tr = S.coll.tr || []; if (S.coll.tr.indexOf(T.id) < 0) S.coll.tr.push(T.id);
+  const T = TREASURES[S.tr.t]; setBrag('tr', S.tr.t); S.coins += T.reward; S.coll.tr = S.coll.tr || []; if (S.coll.tr.indexOf(T.id) < 0) S.coll.tr.push(T.id);
   track('tr_done', { t: S.tr.t }); S.tr = { t: S.tr.t + 1, got: [] }; trCache = null; dirty = true; save(true);
   const next = TREASURES[S.tr.t];
   modal(`<div style="text-align:center"><img src="assets/i/tr_${T.id}.webp" alt="" style="width:120px;height:120px;object-fit:contain;filter:drop-shadow(0 0 18px rgba(255,210,90,.6))"></div>
@@ -726,7 +726,7 @@ function onArriveBase(b, evac, noOpen) {
     if (it.t <= 5) gain += C.ORES[it.t].price;
     if (it.t >= 4) gems = true;
     if (it.t === 4) { if (S.stats.diamonds % 3 === 0) catSay('diamond'); S.stats.diamonds++; questDone('diamond'); if (S.stats.diamonds >= 10) achieve('distract'); track('diamond_delivered'); }
-    if (it.t === 5 && S.coll.colored.indexOf(it.id) < 0) { S.coll.colored.push(it.id); gain += 100; extra.push(['💗', C.COLORED[it.id].name]); }
+    if (it.t === 5 && S.coll.colored.indexOf(it.id) < 0) { S.coll.colored.push(it.id); gain += 100; setBrag('gem', it.id); { const gid = it.id; setTimeout(() => showBrag('assets/i/pinkgem.webp', 'Редкий цветной алмаз!', C.COLORED[gid].name), 900); } extra.push(['💗', C.COLORED[it.id].name]); }
     if (it.t === 6 && S.coll.art.indexOf(it.id) < 0) { S.coll.art.push(it.id); gain += 150; extra.push(['📦', C.ARTIFACTS[it.id].name]); if (it.id === 1) questDone('blueprint'); }
   }
   // добыча сама превращается в монеты
@@ -768,8 +768,25 @@ function activeQuests() {
   return C.QUESTS.filter(q => !S.quests[q.id] && (q.id !== 'leak' || S.built >= 3) && (q.id !== 'blueprint' || S.built >= 1)).slice(0, 2);
 }
 function achieve(id) {
-  if (S.ach.indexOf(id) >= 0) return; S.ach.push(id); toast('🏆 ' + C.ACH[id].name); SFX.gem(); dirty = true;
+  if (S.ach.indexOf(id) >= 0) return; S.ach.push(id); SFX.gem(); dirty = true;
+  setBrag('ach', id); showBrag('assets/i/trophy.webp', 'Достижение: «' + C.ACH[id].name + '»', C.ACH[id].desc);
 }
+// ---------- «Похвастаться»: последнее яркое событие попадает в готовое сообщение ----------
+function setBrag(k, id) { S.brag = { k, id, t: S.stats.playTime }; dirty = true; }
+function bragCode() { const b = S.brag; return b && S.stats.playTime - b.t < 1800 ? b.k + b.id : '-'; }
+function bragLine() {
+  const b = S.brag; if (!b || S.stats.playTime - b.t >= 1800) return '';
+  if (b.k === 'tr' && TREASURES[b.id]) return `🏆 Я нашёл древнее сокровище «${TREASURES[b.id].name}» под Беринговым проливом — собрал все 7 осколков!`;
+  if (b.k === 'ach' && C.ACH[b.id]) return `🏅 Новое достижение «${C.ACH[b.id].name}»: ${C.ACH[b.id].desc}!`;
+  if (b.k === 'gem' && C.COLORED[b.id]) return `💎 Я нашёл редкий цветной алмаз «${C.COLORED[b.id].name}» — таких всего 10!`;
+  return '';
+}
+let bragT = null;
+function showBrag(img, title, sub) {
+  const el = $('brag'); el.querySelector('img').src = img; el.querySelector('b').textContent = title; el.querySelector('span').textContent = sub || '';
+  el.classList.remove('off'); clearTimeout(bragT); bragT = setTimeout(() => el.classList.add('off'), 7000);
+}
+$('brag').querySelector('button').addEventListener('click', e => { e.stopPropagation(); $('brag').classList.add('off'); shareChat('brag'); });
 
 const CAT_LINES = [
   'Мяу. (Перевод: «где моя миска?».)',
@@ -1076,7 +1093,8 @@ function drawMachine(ts, ox, oy) {
   const s = ts * 1.22;
   if (S.heat > 75) { cx.shadowColor = '#ff4a1a'; cx.shadowBlur = 14 + Math.sin(time * 12) * 6; }
   const lvSpr = S.up.drill > 1 && ok(IMG['drill_' + S.up.drill]) ? IMG['drill_' + S.up.drill] : IMG.drill;
-  const spr = S.legend && ok(IMG.drill_legend) ? IMG.drill_legend : itemOn('skin_gold') ? (ok(IMG.drill_gold) ? IMG.drill_gold : goldSprite()) : lvSpr;
+  const sk = curSkin();
+  const spr = sk ? skinSprite(sk) : S.legend && ok(IMG.drill_legend) ? IMG.drill_legend : itemOn('skin_gold') ? (ok(IMG.drill_gold) ? IMG.drill_gold : goldSprite()) : lvSpr;
   const sw0 = spr.naturalWidth || spr.width || 256, sh0 = spr.naturalHeight || spr.height || 190, dh = s * sh0 / sw0;
   // навесное оборудование: видно, что улучшено (растёт с уровнем)
   const att = (n, x, y, w, ax, ay) => { const im = IMG['att/' + n]; if (!ok(im)) return; const h = w * im.naturalHeight / im.naturalWidth; cx.drawImage(im, x - w * ax, y - h * ay, w, h); };
@@ -1109,7 +1127,7 @@ function drawMachine(ts, ox, oy) {
 
     cx.restore();
   }
-  if (itemOn('skin_gold') && !S.legend && Math.random() < .3) particles.push({ x: M.rx + .5 + rnd(-.4, .4), y: M.ry + .5 + rnd(-.3, .3), vx: rnd(-.5, .5), vy: rnd(-1.5, -.5), life: .5, c: '#ffe27a' });
+  if ((curSkin() === 'gold' || !curSkin() && itemOn('skin_gold') && !S.legend) && Math.random() < .3) particles.push({ x: M.rx + .5 + rnd(-.4, .4), y: M.ry + .5 + rnd(-.3, .3), vx: rnd(-.5, .5), vy: rnd(-1.5, -.5), life: .5, c: '#ffe27a' });
 }
 
 function drawLight(ts, ox, oy) {
@@ -1370,6 +1388,7 @@ function openBase() {
     return `<div class="up lv${n}"><img class="uimg" src="${upImg(k, n)}" alt=""><div class="un">${u.name} <small>ур. ${n}</small></div>${pips(n)}
       <div class="uv">${cost !== null ? u.fmt(u.vals[n - 1]) + ' → <b>' + u.fmt(u.vals[n]) + '</b>' : 'максимум'}</div>${btn}<div class="uh">${u.desc}</div></div>`;
   }).join('') + `</div>`;
+  if (skinsOpen()) h += skinsHtml();
   if (S.built === 7) h += `<button class="btn ${S.proto ? 'sec2' : ''} wide" id="protoBtn">🚀 ${S.proto ? 'Снять прототип бура' : 'Поставить прототип бура (быстрее, но греется)'}</button>`;
   // 3) Цель и «дальше»
   if (S.built < NCH) {
@@ -1399,6 +1418,7 @@ function openBase() {
   const on = (id, fn) => { const e = body.querySelector('#' + id); if (e) e.onclick = fn; };
   on('goBtn', closeSheet);
   bindShop(() => openBase());
+  bindSkins(() => openBase());
   on('shopBtn', () => openShop(true));
   on('protoBtn', () => { S.proto = !S.proto; if (S.proto) say('billionaire', C.CHAPTERS_DATA[7].joke, true); dirty = true; openBase(); });
   body.querySelectorAll('[data-cons]').forEach(e => e.onclick = () => { const k = e.dataset.cons, c = C.CONSUMABLES[k]; if (S.coins >= c.price && S.cons[k] < consCap()) { S.coins -= c.price; S.cons[k]++; SFX.coin(); dirty = true; openBase(); } });
@@ -1586,6 +1606,30 @@ function openCollection() {
     Object.entries(C.ACH).map(([k, a]) => `<div class="row"><span class="grow">${S.ach.indexOf(k) >= 0 ? '🏆 <b>' + a.name + '</b>' : '🔒 ' + a.name}<div class="sub">${a.desc}</div></span></div>`).join('') + `</div>`;
   openSheet('Коллекция', h);
 }
+// ---------- Оформление буровой: после прохождения кампании можно выбрать любой скин ----------
+const SKINS = [
+  { id: 'd1', img: 'drill', name: 'Классика' }, { id: 'd2', img: 'drill_2', name: 'Медный' }, { id: 'd3', img: 'drill_3', name: 'Стальной' },
+  { id: 'd4', img: 'drill_4', name: 'Изумрудный' }, { id: 'd5', img: 'drill_5', name: 'Плазменный' },
+  { id: 'gold', img: 'drill_gold', name: 'Золотой', lock: () => !S.shop.skin_gold },
+  { id: 'legend', img: 'drill_legend', name: 'Платиновый', lock: () => !S.legend },
+];
+const skinsOpen = () => !!S && (S.done || S.completions > 0);
+const curSkin = () => skinsOpen() && S.skin && SKINS.some(k => k.id === S.skin && !(k.lock && k.lock())) ? S.skin : null;
+function skinSprite(id) {
+  const k = SKINS.find(x => x.id === id); const im = k && IMG[k.img];
+  if (id === 'gold' && !ok(im)) return goldSprite();
+  return ok(im) ? im : IMG.drill;
+}
+function skinsHtml() {
+  const cur = curSkin() || (S.legend ? 'legend' : 'd' + S.up.drill);
+  return `<div class="ups-h"><span>🎨 Оформление буровой</span></div><div class="skins">` + SKINS.map(k => {
+    const locked = k.lock && k.lock();
+    return `<button class="skin ${k.id === cur ? 'on' : ''} ${locked ? 'lock' : ''}" data-skin="${k.id}" ${locked ? 'disabled' : ''}><img src="assets/${k.img}.webp" alt=""><span>${k.name}</span>${locked ? '<i>⭐ в лавке</i>' : ''}</button>`;
+  }).join('') + `</div>`;
+}
+function bindSkins(reopen) {
+  $('sheetBody').querySelectorAll('[data-skin]').forEach(b => b.onclick = () => { S.skin = b.dataset.skin; dirty = true; save(true); SFX.coin(); track('skin', { id: S.skin }); reopen(); });
+}
 function openBugReport() {
   openSheet('Сообщить об ошибке', `<div class="sec"><div style="font-size:13.5px;line-height:1.45;margin-bottom:8px">Что пошло не так? Опиши коротко: что делал и что случилось. Сообщение сразу получат разработчики игры.</div>
     <textarea id="bugText" maxlength="2000" rows="5"></textarea></div>
@@ -1606,11 +1650,12 @@ function openBugReport() {
 function openSettings() {
   const t = (k, name) => `<label class="toggle"><span>${name}</span><input type="checkbox" data-set="${k}" ${S.set[k] ? 'checked' : ''}></label>`;
   const ti = (id, name) => S.shop[id] ? `<label class="toggle"><span>${name}</span><input type="checkbox" data-inv="${id}" ${itemOn(id) ? 'checked' : ''}></label>` : '';
-  openSheet('Настройки', `<div class="sec">${t('sound', '🔊 Звук')}${t('jokes', '💬 Реплики персонажей')}${t('vibro', '📳 Вибрация')}${t('calm', '🌙 Меньше тряски и вспышек')}${ti('cat', '🐈 Кот-прораб на буровой')}${ti('skin_gold', '✨ Золотой бур')}</div>
+  openSheet('Настройки', `<div class="sec">${t('sound', '🔊 Звук')}${t('jokes', '💬 Реплики персонажей')}${t('vibro', '📳 Вибрация')}${t('calm', '🌙 Меньше тряски и вспышек')}${ti('cat', '🐈 Кот-прораб на буровой')}${ti('skin_gold', '✨ Золотой бур')}</div>${skinsOpen() ? skinsHtml() : ''}
     <div class="toggle"><span>🌐 Язык / Language</span><span class="langsw"><button class="btn ${window.LANG === 'en' ? 'sec2' : ''} sm" data-lang="ru">RU</button><button class="btn ${window.LANG === 'en' ? '' : 'sec2'} sm" data-lang="en">EN</button></span></div>
     <button class="btn sec2 wide" id="resetBtn">Начать кампанию заново</button>
     <p style="font-size:12px;color:#9db4c2">Прогресс сохраняется в облаке Telegram. Коллекция и достижения при перезапуске сохраняются.</p>`);
   $('sheetBody').querySelectorAll('[data-set]').forEach(e => e.onchange = () => { S.set[e.dataset.set] = e.checked; dirty = true; });
+  bindSkins(() => openSettings());
   $('sheetBody').querySelectorAll('[data-lang]').forEach(e => e.onclick = () => { if (e.dataset.lang === (window.LANG || 'ru')) return; try { localStorage.setItem('dig_lang', e.dataset.lang); } catch (er) {} save(true); setTimeout(() => location.reload(), 150); });
   $('sheetBody').querySelectorAll('[data-inv]').forEach(e => e.onchange = () => { S.set['off_' + e.dataset.inv] = !e.checked; dirty = true; save(true); });
   $('resetBtn').onclick = () => modal('<h2>Начать заново?</h2><p>Тоннель, деньги и улучшения обнулятся. Коллекция и достижения останутся.</p>', [
@@ -1680,16 +1725,16 @@ function titleFor() {
 }
 function distractWord() { const r = S.stats.distract / Math.max(60, S.stats.playTime); return r > .45 ? 'постоянно' : r > .2 ? 'иногда' : 'почти никогда'; }
 function shareText() {
-  const left = 100 - pct();
-  return (S.built >= NCH ? `Я докопался до Америки! 🚇 Чукотка и Аляска соединены.` : `До Аляски осталось ${left}%.`) +
-    ` Алмазов найдено: ${S.stats.diamonds}. От основной задачи отвлекался: ${distractWord()}. Звание: «${titleFor()}».`;
+  const left = 100 - pct(), bl = bragLine();
+  return (bl ? bl + ' ' : '') + (S.built >= NCH ? `Я докопался до Америки! 🚇 Чукотка и Аляска соединены.` : `До Аляски осталось ${left}%.`) +
+    ` Алмазов найдено: ${S.stats.diamonds}. От основной задачи отвлекался: ${distractWord()}. Звание: «${titleFor()}». А ты докопаешься быстрее?`;
 }
 function cardUrl() { return location.origin + location.pathname.replace(/[^/]*$/, '') + 'assets/promo.jpg'; }
 function shareChat(via) {
   track('share_card', { via });
   const can = inTG && tg.isVersionAtLeast && tg.isVersionAtLeast('6.7');
   const uid = inTG && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 0;
-  const q = `r ${pct()} ${S.stats.diamonds} ${S.stats.accidents} ${Object.keys(TITLES).indexOf(titleFor())} ${['почти никогда', 'иногда', 'постоянно'].indexOf(distractWord())} ${uid}`;
+  const q = `r ${pct()} ${S.stats.diamonds} ${S.stats.accidents} ${Object.keys(TITLES).indexOf(titleFor())} ${['почти никогда', 'иногда', 'постоянно'].indexOf(distractWord())} ${uid} ${bragCode()}`;
   if (can) { try { tg.switchInlineQuery(q, ['users', 'groups', 'channels']); return; } catch (e) {} }
   if (navigator.share) navigator.share({ title: 'Докопаться до Америки', text: shareText(), url: APP_LINK }).catch(() => {});
   else copy(shareText() + ' ' + APP_LINK);

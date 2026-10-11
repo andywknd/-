@@ -64,6 +64,35 @@ DISTRACT = ["почти никогда", "иногда", "постоянно"]
 TITLES_EN = ["Drill Intern", "Permafrost Foreman", "Undersea Supervisor", "Almost American",
              "Diamond Distraction", "Evacuation Master", "Continent Connector"]
 DISTRACT_EN = ["almost never", "sometimes", "all the time"]
+# «Похвастаться»: событие из игры -> заголовок карточки
+TREAS = [("Янтарный мамонт", "Amber Mammoth"), ("Компас первопроходцев", "Explorers' Compass"), ("Звёздный метеорит", "Star Meteorite")]
+ACHS = {"dug": ("Докопался", "Dug through", "соединил Чукотку и Аляску", "connected Chukotka and Alaska"),
+        "distract": ("Алмазный отвлекатор", "Diamond distraction", "доставил 10 алмазов", "delivered 10 diamonds"),
+        "budget": ("Смета выдержала", "Budget held up", "накопил 1000 монет", "saved up 1000 coins"),
+        "core": ("Тоннель через центр Земли", "Tunnel through the Earth's core", "добрался до самого дна карты", "reached the very bottom of the map"),
+        "lastdrop": ("Последняя капля", "Last drop", "вернулся на базу с топливом меньше 5%", "made it back to base with less than 5% fuel"),
+        "noleak": ("Без единой протечки", "Not a single leak", "устранил протечку вовремя", "fixed a leak in time")}
+GEMS = [("Чукотский розовый", "Chukotka Pink"), ("Мерзлотный голубой", "Permafrost Blue"), ("Сметный зелёный", "Budget Green"),
+        ("Подводный синий", "Undersea Blue"), ("Островной янтарный", "Island Amber"), ("Гранитный фиолетовый", "Granite Violet"),
+        ("Вчерашний красный", "Yesterday Red"), ("Прототипный чёрный", "Prototype Black"), ("Аляскинский золотой", "Alaskan Gold"),
+        ("Стыковочный радужный", "Junction Rainbow")]
+
+
+def brag_line(code: str, en: bool) -> str:
+    try:
+        if code.startswith("tr"):
+            n = TREAS[int(code[2:])][1 if en else 0]
+            return (f"🏆 I found the ancient treasure «{n}» under the Bering Strait — all 7 shards!" if en
+                    else f"🏆 Я нашёл древнее сокровище «{n}» под Беринговым проливом — собрал все 7 осколков!")
+        if code.startswith("ach"):
+            a = ACHS[code[3:]]
+            return f"🏅 New achievement «{a[1]}»: {a[3]}!" if en else f"🏅 Новое достижение «{a[0]}»: {a[2]}!"
+        if code.startswith("gem"):
+            n = GEMS[int(code[3:])][1 if en else 0]
+            return f"💎 I found a rare colored diamond «{n}» — there are only 10 of them!" if en else f"💎 Я нашёл редкий цветной алмаз «{n}» — таких всего 10!"
+    except Exception:
+        pass
+    return ""
 
 PRODUCTS = {
     "skin_gold": ("Золотой бур", "Позолоченная буровая с искрами. Чистая косметика.", 25),
@@ -645,6 +674,10 @@ async def inline(q: InlineQuery):
             if not en:
                 caption += "\n\nА ты докопаешься быстрее?"
                 title = f"Мой тоннель: {p}% · «{t}»"
+            bl = brag_line(parts[7], en) if len(parts) >= 8 else ""
+            if bl:
+                caption = bl + "\n\n" + caption
+                title = ("Show off: " if en else "Похвастаться: ") + bl.split(" ", 1)[1][:60]
         except ValueError:
             pass
     result = InlineQueryResultPhoto(
