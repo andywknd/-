@@ -15,8 +15,8 @@ const SEG = C.SEG, NCH = C.CHAPTERS, H = C.H, SURF = C.SURFACE, CT = C.CT, CB = 
 // Длины участков: последние два — длинные (финал можно долго и интересно копать).
 // Старые сохранения, где уже дошли до 9-го участка, остаются на прежней геометрии.
 // Геометрия карты по версиям сохранений: 1 — все по 22; 2 — длинный финал; 3 — каждый участок длиннее (текущая)
-const GEOS = { 1: Array(NCH).fill(SEG), 2: [22, 22, 22, 22, 22, 22, 22, 22, 40, 48], 3: C.SEGL || Array(NCH).fill(SEG) };
-const GEO_CUR = 3;
+const GEOS = { 1: Array(NCH).fill(SEG), 2: [22, 22, 22, 22, 22, 22, 22, 22, 40, 48], 3: [20, 22, 24, 26, 28, 30, 32, 34, 42, 50], 4: C.SEGL || Array(NCH).fill(SEG) };
+const GEO_CUR = 4;
 let SEGL = GEOS[GEO_CUR], BXS = [], W = 0, N = 0;
 function setGeo(v) {
   SEGL = GEOS[v] || GEOS[GEO_CUR]; BXS = [3]; for (let i = 0; i < NCH; i++) BXS.push(BXS[i] + SEGL[i]);
@@ -133,7 +133,7 @@ function generate(seed) {
 // ---------- Состояние ----------
 let S = null;
 const defaultState = () => ({
-  v: 1, wv: 3, seed: (Math.random() * 1e9) | 0, coins: C.START_COINS,
+  v: 1, wv: 4, seed: (Math.random() * 1e9) | 0, coins: C.START_COINS,
   fuel: C.UPGRADES.tank.vals[0], hull: C.UPGRADES.hull.vals[0], heat: 0,
   x: bx(0), y: CB, dir: 'r',
   cargo: [], wh: { iron: 0, copper: 0, gold: 0, diamond: 0, colored: [] },
@@ -315,7 +315,7 @@ function drawIc(n, x, y, size) {
 }
 const EMO = { '🧭': 'trmap', '🌊': 'pump', '🪙': 'coin', '💰': 'coin', '⛽': 'fuel', '📦': 'cargo', '🎒': 'cargo', '🌡': 'heat', '🛡': 'hull', '🪨': 'iron', '🟠': 'copper', '🟡': 'gold',
   '💎': 'diamond', '✨': 'diamond', '💗': 'pinkgem', '🏁': 'flag', '🎯': 'flag', '🏔': 'mountain', '👥': 'friends', '🙂': 'friends', '🎁': 'gift', '🎟': 'ticket',
-  '📨': 'envelope', '⚙': 'gear', '🏠': 'gear', '⭐': 'star', '🔧': 'repair', '❄': 'coolant', '🚰': 'pump', '🧰': 'container', '📍': 'pin', '☁': 'gas',
+  '📨': 'envelope', '⚙': 'gear', '🏠': 'home', '🚨': 'siren', '⭐': 'star', '🔧': 'repair', '❄': 'coolant', '🚰': 'pump', '🧰': 'container', '📍': 'pin', '☁': 'gas',
   '🦣': 'mammoth', '🛢': 'oil', '📄': 'doc', '📋': 'doc', '⛏': 'pickaxe', '👆': 'hand', '🏆': 'trophy', '📣': 'megaphone', '📲': 'megaphone', '⚡': 'bolt',
   '📡': 'scanner', '🚜': 'drill', '🐈': 'cat', '🚀': 'lift', '🚃': 'train', '🚇': 'train', '🚂': 'train' };
 const EMO_TXT = { '✕': '×', '✖': '×', '▶': '›', '✅': '✓', '✔': '✓', '➡': '→', '⬆': '↑', '⬇': '↓', '➕': '+' };
@@ -1504,8 +1504,8 @@ $('menuBtn').addEventListener('click', () => {
     ${F.shop ? '<button class="btn sec2 wide" id="m-shop">⭐ Лавка миллиардера</button>' : ''}
     <button class="btn sec2 wide" id="m-coll">💎 Коллекция и достижения</button>
     <button class="btn sec2 wide" id="m-set">⚙️ Настройки</button>
-    <button class="btn sec2 wide" id="m-sos">🚨 Застрял? Эвакуация</button>
-    <button class="btn sec2 wide" id="m-title">🏠 На главный экран</button>`);
+    <button class="btn sec2 wide" id="m-sos"><img class="mi" src="assets/i/evac.webp" alt="">Застрял? Эвакуация</button>
+    <button class="btn sec2 wide" id="m-title"><img class="mi" src="assets/i/home.webp" alt="">На главный экран</button>`);
   $('m-share').onclick = () => openShare();
   if ($('inviteBtn')) $('inviteBtn').onclick = invite;
   if ($('m-shop')) $('m-shop').onclick = () => openShop();
