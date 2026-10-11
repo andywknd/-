@@ -391,6 +391,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .nmb{display:flex;gap:8px;margin-top:9px}.nmb .btn{flex:1;font-size:13.5px}
 .offer.nm{border-color:#e8585a;background:#2e1416}
 .offer.nm i{border-image-source:url(assets/ui/btn_green.webp);color:#062a10}
+#playBtn.loading{opacity:.7;animation:none}
 </style>
 </head>
 <body>
@@ -460,7 +461,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 <div id="dialog" class="hidden"><div class="dl"><img alt=""><div class="bub"><small></small><span></span><i class="tap">нажми, чтобы продолжить ›</i></div></div></div>
 <div id="finale" class="screen hidden" style="background:#0b1620"><canvas id="finc"></canvas><div class="body" id="finBody" style="padding:12px 14px calc(var(--sab) + 16px);overflow:auto;flex:1;touch-action:pan-y"></div></div>
 
-<script>window.GAME_V = 32;</script>
+<script>window.GAME_V = 33;</script>
 <script>
 /* Язык: выбранный в настройках, иначе язык Telegram (русский для RU/СНГ, английский для остальных) */
 (function () {

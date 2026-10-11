@@ -1890,16 +1890,19 @@ function showGame() {
   const top = inTG ? ((tg.contentSafeAreaInset && tg.contentSafeAreaInset.top || 0) + (tg.safeAreaInset && tg.safeAreaInset.top || 0)) : 0;
   $('hud').style.paddingTop = (8 + top) + 'px';
 }
+// Сохранение из облака Telegram грузится до 2,5 с — нажатие «Копать» раньше времени запоминаем и выполняем после загрузки
+let pendingPlay = false;
 $('playBtn').addEventListener('click', () => {
+  if (!S) { pendingPlay = true; $('playBtn').classList.add('loading'); return; }
   audio(); showGame(); paused = false;
   setTimeout(() => checkRefs(true), 4000);
   const showHint = () => { if (!S.tut.moved) $('tapHint').classList.remove('hidden'); };
   if (!S.tut.intro) { S.tut.intro = true; track('tutorial_start'); S.chIntro = 0; banner('CHAPTER 1', C.CHAPTERS_DATA[0].title); setTimeout(() => dialog(C.CHAPTERS_DATA[0].intro, showHint), 1200); }
   else { showHint(); if (S.chIntro < S.built && S.built < NCH) chapterIntro(); }
 });
-$('collBtnT').addEventListener('click', () => { openCollection(); });
+$('collBtnT').addEventListener('click', () => { if (S) openCollection(); });
 $('brand').addEventListener('click', e => { if (inTG && tg.openTelegramLink) { e.preventDefault(); try { tg.openTelegramLink('https://t.me/moscowmap'); } catch (er) { location.href = 'https://t.me/moscowmap'; } } track('brand_click'); });
-$('setBtnT').addEventListener('click', () => { openSettings(); });
+$('setBtnT').addEventListener('click', () => { if (S) openSettings(); });
 $('sheetX').addEventListener('click', () => { if (!$('title').classList.contains('hidden')) paused = true; });
 
 function newCampaign() {
@@ -1963,7 +1966,7 @@ function boot() {
     else { S = defaultState(); setGeo(GEO_CUR); generate(S.seed); computeDist(); teleport(0); }
     reveal(M.x, M.y, 3);
     camX = M.x * TS - VW / 2; camY = M.y * TS - VH / 2;
-    showTitle(); track('open', { start: inTG ? tg.initDataUnsafe.start_param || '' : '' });
+    showTitle(); if (pendingPlay) { pendingPlay = false; $('playBtn').classList.remove('loading'); setTimeout(() => $('playBtn').click(), 50); } track('open', { start: inTG ? tg.initDataUnsafe.start_param || '' : '' });
     requestAnimationFrame(t => { lastT = t; loop(t); });
   });
 }
