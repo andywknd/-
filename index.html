@@ -91,7 +91,20 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 /* Экраны */
 .screen{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column}
 #title{background:#0b1620 url(assets/title_bg.webp) center/cover no-repeat;align-items:center;justify-content:space-between;padding-bottom:calc(var(--sab) + 26px)}
-#title .logo{text-align:center;margin-top:7vh;padding:0 16px}
+#title .logo{text-align:center;margin-top:3vh;padding:0 16px}
+#brand{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.94);color:#1a2830;border-radius:999px;padding:6px 14px 6px 9px;font-weight:800;font-size:13px;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,.3);margin-bottom:14px}
+#brand img{height:17px;width:auto;display:block}
+#brand b{color:#d9534f}
+#tapHint{position:absolute;left:12%;bottom:calc(var(--sab) + 26%);pointer-events:none;text-align:left}
+#tapHint .track{position:relative;width:150px;height:70px}
+#tapHint .arrow{position:absolute;left:20px;top:28px;width:110px;height:6px;border-radius:3px;background:linear-gradient(90deg,rgba(255,190,90,0),rgba(255,190,90,.9));animation:arr 1.6s infinite}
+#tapHint .arrow:after{content:'';position:absolute;right:-6px;top:-6px;border:9px solid transparent;border-left:12px solid rgba(255,190,90,.95);border-right:0}
+#tapHint .dot{position:absolute;left:8px;top:16px;width:30px;height:30px;border-radius:50%;border:3px solid rgba(255,255,255,.9);box-shadow:0 0 14px rgba(255,190,90,.9);animation:swipe 1.6s infinite}
+#tapHint .hand{position:absolute;left:14px;top:30px;font-size:44px;animation:swipe 1.6s infinite;filter:drop-shadow(0 3px 4px rgba(0,0,0,.6))}
+#tapHint .txt{font-weight:800;font-size:15px;color:#fff;text-shadow:0 2px 4px #000;margin-top:14px;max-width:240px;line-height:1.3}
+#tapHint .txt small{display:block;font-weight:600;font-size:12px;color:#ffd27a}
+@keyframes swipe{0%{transform:translateX(0) scale(1.15);opacity:0}12%{opacity:1;transform:translateX(0) scale(1)}70%{transform:translateX(100px) scale(1);opacity:1}100%{transform:translateX(100px) scale(1);opacity:0}}
+@keyframes arr{0%,12%{opacity:0;clip-path:inset(0 100% 0 0)}70%{opacity:1;clip-path:inset(0 0 0 0)}100%{opacity:0}}
 #title .logo h1{margin:0;font-size:clamp(30px,10vw,52px);line-height:.95;font-weight:900;letter-spacing:.5px;color:#fff;text-shadow:0 3px 0 #0f2a3a,0 0 18px rgba(0,0,0,.55);-webkit-text-stroke:1.5px #0f2a3a;text-transform:uppercase}
 #title .logo p{margin:10px 0 0;font-weight:700;font-size:15px;color:#fff;text-shadow:0 1px 4px #000}
 #title .menu{width:min(340px,86%);display:flex;flex-direction:column;gap:10px}
@@ -155,7 +168,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 <div id="say" class="off"><img alt=""><div class="bub"><small></small><span></span></div></div>
 
 <div id="controls" class="hidden">
-  <div id="joyzone"><div id="joy" class="hidden"><div id="knob"></div></div><div id="joyhint">Веди пальцем — бур копает</div></div>
+  <div id="joyzone"><div id="joy" class="hidden"><div id="knob"></div></div><div id="joyhint" class="hidden"></div><div id="tapHint" class="hidden"><div class="track"><div class="arrow"></div><div class="dot"></div><div class="hand">👆</div></div><div class="txt">Зажми палец и веди вправо — бур копает<small>Вверх / вниз / влево — так же. На компьютере — стрелки</small></div></div></div>
   <div id="btns">
     <button id="baseBtn" class="rb hidden">🏠 База</button>
     <div id="rowc">
@@ -174,6 +187,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 <!-- Титульный экран -->
 <div id="title" class="screen top-pad">
   <div class="logo">
+    <a id="brand" href="https://t.me/moscowmap" target="_blank" rel="noopener"><img src="assets/nm_logo.png" alt="">Игра от <b>«Новостей Москвы»</b></a>
     <h1>Докопаться<br>до Америки</h1>
     <p>Пока все обсуждают — ты копаешь</p>
   </div>
@@ -193,8 +207,8 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 <div id="dialog" class="hidden"><div class="dl"><img alt=""><div class="bub"><small></small><span></span><i class="tap">нажми, чтобы продолжить ›</i></div></div></div>
 <div id="finale" class="screen hidden" style="background:#0b1620"><canvas id="finc"></canvas><div class="body" id="finBody" style="padding:12px 14px calc(var(--sab) + 16px);overflow:auto;flex:1;touch-action:pan-y"></div></div>
 
-<script src="config.js?v=3"></script>
-<script src="shop-links.js?v=3"></script>
-<script src="game.js?v=3"></script>
+<script src="config.js?v=4"></script>
+<script src="shop-links.js?v=4"></script>
+<script src="game.js?v=4"></script>
 </body>
 </html>

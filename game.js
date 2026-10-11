@@ -145,6 +145,18 @@ const drillDps = () => upv('drill') * (S.proto ? 1.7 : 1);
 const fenceX = () => S.built >= NCH ? W : bx(S.built + 1) + 2;
 const isOpenBase = k => baseAt[k] >= 0 && baseAt[k] <= S.built;
 const pct = () => Math.round(S.built / NCH * 100);
+// Постепенное раскрытие механик: сначала «просто копай», дальше — по главе за раз
+const F = {
+  get simple() { return S.built < 1; },
+  get heat() { return S.built >= 1; },
+  get scan() { return S.built >= 2; },
+  get hull() { return S.built >= 3; },
+  get quests() { return S.built >= 2; },
+  get shop() { return S.built >= 2 && shopReady(); },
+  cons(k) { return k === 'cool' ? S.built >= 1 : k === 'can' ? S.built >= 2 : S.built >= 3; },
+  up(k) { return ['drill', 'tank', 'cargo'].includes(k) || (k === 'cooling' && S.built >= 1) || (k === 'scanner' && S.built >= 2) || ((k === 'hull' || k === 'drive') && S.built >= 3); },
+  item(id) { return ['cat', 'skin_gold', 'coins'].includes(id) ? S.built >= 2 : ['lift', 'tank_plus'].includes(id) ? S.built >= 3 : S.built >= 4; },
+};
 
 function applyStateToMap() {
   generate(S.seed);
@@ -312,11 +324,12 @@ function buildTiles() {
 const keys = {};
 let joyDir = null, joyId = null, joyO = null;
 const KEYMAP = { ArrowUp: 'u', KeyW: 'u', ArrowDown: 'd', KeyS: 'd', ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r' };
-window.addEventListener('keydown', e => { if (KEYMAP[e.code]) { keys[KEYMAP[e.code]] = 1; e.preventDefault(); } if (e.code === 'Space') { useScan(); e.preventDefault(); } if (e.code === 'KeyE' && atBase >= 0) openBase(); });
+window.addEventListener('keydown', e => { if (KEYMAP[e.code]) { keys[KEYMAP[e.code]] = 1; e.preventDefault(); if (typeof hideHint === 'function') hideHint(); } if (e.code === 'Space') { useScan(); e.preventDefault(); } if (e.code === 'KeyE' && atBase >= 0) openBase(); });
 window.addEventListener('keyup', e => { if (KEYMAP[e.code]) keys[KEYMAP[e.code]] = 0; });
 const jz = $('joyzone'), joy = $('joy'), knob = $('knob');
+function hideHint() { $('tapHint').classList.add('hidden'); if (S && !S.tut.moved) { S.tut.moved = true; dirty = true; } }
 jz.addEventListener('pointerdown', e => {
-  audio(); if (joyId !== null) return; joyId = e.pointerId; joyO = { x: e.clientX, y: e.clientY };
+  audio(); hideHint(); if (joyId !== null) return; joyId = e.pointerId; joyO = { x: e.clientX, y: e.clientY };
   joy.style.left = e.clientX + 'px'; joy.style.top = (e.clientY - jz.getBoundingClientRect().top) + 'px';
   joy.classList.remove('hidden'); knob.style.transform = ''; $('joyhint').classList.add('hidden');
   try { jz.setPointerCapture(e.pointerId); } catch (er) {}
@@ -433,7 +446,7 @@ function evacuate(cause) {
       teleport(S.lastBase);
       S.fuel = Math.max(S.fuel, tankMax() * .5); S.hull = Math.max(S.hull, hullMax() * .5); S.heat = 0;
       dirty = true; save(true); paused = false;
-      setTimeout(() => say('petrovich', ['Ничего, бывает. Главное — каска цела.', 'Записал в журнал как «плановую проверку системы эвакуации».', 'Машину вытащили. Гордость — пока нет.'][S.stats.accidents % 3], true), 400);
+      setTimeout(() => say('petrovich', ['Ничего, бывает. Главное — каска цела.', 'Зато проверили систему эвакуации. Работает!', 'Машину вытащили. Гордость — пока нет.'][S.stats.accidents % 3], true), 400);
       onArriveBase(S.lastBase, true);
     } }]);
 }
@@ -495,10 +508,17 @@ function onArriveBase(b, evac) {
     if (!items.length && run.fuel0 - S.fuel > 6) setTimeout(() => say('petrovich', C.JOKES.empty), 500);
     track('sortie_end', { items: items.length, fuel: Math.round(used) });
   }
+  if (F.simple) {
+    const need = needFor(); const sI = Math.max(0, S.wh.iron - need.iron), sC = Math.max(0, S.wh.copper - need.copper);
+    const gain = sI * C.ORES[1].price + sC * C.ORES[2].price + S.wh.gold * C.ORES[3].price + S.wh.diamond * C.ORES[4].price + S.wh.colored.length * C.ORES[5].price;
+    S.wh.iron -= sI; S.wh.copper -= sC; S.wh.gold = 0; S.wh.diamond = 0; S.wh.colored = [];
+    if (gain) { S.coins += gain; S.stats.earned += gain; lines.push('💰 Лишнее продано: +' + gain + ' 🪙'); SFX.coin(); }
+    S.fuel = tankMax(); S.hull = hullMax(); lines.push('⛽ Бак заправлен бесплатно.');
+  }
   lines = lines.concat(artMsgs);
   baseSummary = lines.join('<br>');
   run = null;
-  if (!S.tut.returned) { S.tut.returned = true; track('tutorial_done'); setTimeout(() => say('alya', 'Добро пожаловать на базу! Продай излишки, заправься и купи первое улучшение.', true), 300); }
+  if (!S.tut.returned) { S.tut.returned = true; track('tutorial_done'); setTimeout(() => say('alya', F.simple ? 'Добро пожаловать на базу! Лишнее продали, бак заправили. Купи улучшение — и снова копать!' : 'Добро пожаловать на базу! Продай излишки, заправься и купи улучшение.', true), 300); }
   S.heat = 0;
   dirty = true; save(true);
   if (items.length || S.fuel < tankMax() * .5 || first || artMsgs.length) setTimeout(() => { if (!paused || !$('modal').classList.contains('hidden')) {} openBase(); }, evac ? 50 : 350);
@@ -517,7 +537,7 @@ function achieve(id) {
   if (S.ach.indexOf(id) >= 0) return; S.ach.push(id); toast('🏆 ' + C.ACH[id].name); SFX.gem(); dirty = true;
 }
 
-const CAT_LINES = ['Мяу. (Перевод: «смета не сходится».)', 'Мур. Я проверил грунт — тёплый, можно спать.', 'Мяу! Там алмаз. Или мышь. Копай, разберёмся.', 'Кот-прораб одобряет этот тоннель. Подпись: лапа.', 'Мяу. Американцы прислали корм в фунтах. Возмущён.'];
+const CAT_LINES = ['Мяу. (Перевод: «где моя миска?».)', 'Мур. Я проверил грунт — тёплый, можно спать.', 'Мяу! Там алмаз. Или мышь. Копай, разберёмся.', 'Кот-прораб одобряет этот тоннель. Подпись: лапа.', 'Мяу. Корм прислали в фунтах. Пересчитываю в граммы.'];
 // ---------- Обновление ----------
 let lastT = performance.now(), sayTimer = 0;
 function update(dt) {
@@ -569,7 +589,7 @@ function update(dt) {
           if (M.drillK !== k) { M.drillK = k; }
           const eff = S.heat > 75 ? .5 : 1;
           dmg[k] += drillDps() * eff * dt;
-          S.heat += (5 + h * 3) * (S.proto ? 2 : 1) * dt;
+          if (F.heat) S.heat += (5 + h * 3) * (S.proto ? 2 : 1) * dt;
           S.fuel -= .8 * dt;
           M.drillT += dt; if (M.drillT > .12) { M.drillT = 0; SFX.drill(h); particles.push({ x: tx + .5 - dx * .45, y: ty + .5 - dy * .45, vx: rnd(-2, 2) - dx * 2, vy: rnd(-3, 0), life: .4, c: PAL[grid[k]] ? PAL[grid[k]][2] : '#aaa' }); }
           if (dmg[k] >= h) { breakCell(tx, ty); S.fuel -= .2; startMove(tx, ty, .16 / speed); }
@@ -853,6 +873,9 @@ function hud(dt) {
   else if (S.built < NCH) w = atBase >= 0 ? '' : `Цель: коридор до станции ${S.built + 1 === NCH ? '«Аляска»' : S.built + 1} →`;
   if (w !== warnState) { warnState = w; $('warnline').textContent = w; if (w.startsWith('⛽') || w.startsWith('🚰') || w.startsWith('🛡')) { SFX.warn(); haptic('warning'); } }
   $('baseBtn').classList.toggle('hidden', !(atBase >= 0 && M.st === 'idle'));
+  $('b-heat').classList.toggle('hidden', !F.heat); $('b-hull').classList.toggle('hidden', !F.hull);
+  $('scanBtn').classList.toggle('hidden', !F.scan);
+  ['can', 'rep', 'cool'].forEach(k => $('c-' + k).classList.toggle('hidden', !F.cons(k)));
   ['can', 'rep', 'cool'].forEach(k => { const b = $('c-' + k); b.querySelector('small').textContent = S.cons[k]; b.classList.toggle('dim', !S.cons[k]); });
   const cd = $('scanBtn').querySelector('.cd'); cd.style.setProperty('--p', (scanCD > 0 ? scanCD / 5 * 100 : 0) + '%');
   drawStrip();
@@ -903,7 +926,7 @@ function banner(k, t) {
 
 // ---------- Сканер и расходники ----------
 function useScan() {
-  if (!S || paused || scanCD > 0) return;
+  if (!S || paused || scanCD > 0 || !F.scan) return;
   audio(); scanCD = 5; const r = upv('scanner'); const items = [];
   for (let y = M.y - r; y <= M.y + r; y++) for (let x = M.x - r; x <= M.x + r; x++) {
     if (!inb(x, y) || (x - M.x) ** 2 + (y - M.y) ** 2 > r * r || x >= fenceX()) continue; const k = idx(x, y);
@@ -916,7 +939,7 @@ function useScan() {
   const lvl = S.up.scanner;
   const diam = items.filter(i => i.t === 4 || i.t === 5);
   diam.forEach(i => { const k = idx(i.x, i.y); if (S.pins.indexOf(k) < 0 && S.pins.length < 30) S.pins.push(k); });
-  if (!items.length) toast('📡 Рядом пусто. Только грунт и смета.');
+  if (!items.length) toast('📡 Рядом пусто. Только грунт и камни.');
   else if (lvl >= 3) { const c = {}; items.forEach(i => { const n = i.gas ? 'газ' : C.ORES[i.t].name.toLowerCase(); c[n] = (c[n] || 0) + 1; }); toast('📡 ' + Object.entries(c).map(([k, v]) => k + ' ×' + v).join(', ')); }
   else toast('📡 Ценность рядом: ' + (val > 300 ? 'высокая 💎' : val > 100 ? 'средняя' : 'низкая') + (items.some(i => i.gas) ? ' · есть газ ☁️' : ''));
   if (diam.length) toast(document.getElementById('toast').innerHTML + '<br>📍 Алмазы отмечены на карте');
@@ -984,32 +1007,32 @@ function openBase(tab) {
       <button class="btn good wide" id="buildBtn" ${chk.connected && chk.okIron && chk.okCopper ? '' : 'disabled'}>Построить сегмент</button></div>`;
   }
   // склад
-  h += `<div class="sec"><h3><span>📦 Склад</span><span>🪙 ${Math.floor(S.coins)}</span></h3>
+  if (!F.simple) h += `<div class="sec"><h3><span>📦 Склад</span><span>🪙 ${Math.floor(S.coins)}</span></h3>
     <div class="row"><span class="grow">Железо ${S.wh.iron} · Медь ${S.wh.copper} · Золото ${S.wh.gold} · Алмазы ${S.wh.diamond}${S.wh.colored.length ? ' · Цв. ' + S.wh.colored.length : ''}</span></div>
     <button class="btn wide" id="sellBtn" ${sellVal > 0 ? '' : 'disabled'}>Продать излишки · +${sellVal} 🪙</button>
     <div class="row sub" style="border:0">Железо и медь для ближайшего сегмента остаются на складе.</div>
     ${(S.wh.iron - surIron + S.wh.copper - surCopper) > 0 ? `<button class="btn sec2 wide" id="sellAllBtn">Продать и резерв стройки</button>` : ''}</div>`;
   // сервис
-  h += `<div class="sec"><h3><span>🔧 Сервис</span></h3>
+  if (!F.simple) h += `<div class="sec"><h3><span>🔧 Сервис</span></h3>
     <div class="row"><span class="grow">Топливо ${Math.round(S.fuel)}/${tankMax()} · Корпус ${Math.round(S.hull)}/${hullMax()}</span></div>
     <button class="btn wide" id="svcBtn" ${fuelCost + repCost > 0 ? '' : 'disabled'}>Заправить и починить · ${fuelCost + repCost} 🪙</button>
     ${(S.fuel < tankMax() * .5 || S.hull < hullMax() * .5) && S.coins < fuelCost + repCost ? `<button class="btn sec2 wide" id="freeBtn">Аварийный минимум (до 50%) — бесплатно</button>` : ''}
-    ${['can', 'rep', 'cool'].map(k => { const c = C.CONSUMABLES[k]; return `<div class="row"><span class="grow">${c.icon} ${c.name} <span class="sub">${c.desc} · есть ${S.cons[k]}/${consCap()}</span></span><button class="btn sec2" data-cons="${k}" ${S.cons[k] >= consCap() || S.coins < c.price ? 'disabled' : ''}>${c.price} 🪙</button></div>`; }).join('')}
+    ${['can', 'rep', 'cool'].filter(k => F.cons(k)).map(k => { const c = C.CONSUMABLES[k]; return `<div class="row"><span class="grow">${c.icon} ${c.name} <span class="sub">${c.desc} · есть ${S.cons[k]}/${consCap()}</span></span><button class="btn sec2" data-cons="${k}" ${S.cons[k] >= consCap() || S.coins < c.price ? 'disabled' : ''}>${c.price} 🪙</button></div>`; }).join('')}
     ${S.built === 7 ? `<div class="row"><span class="grow">🚀 Прототип миллиардера<div class="sub">Бур +2 уровня, ×1.7 скорость, нагрев ×2</div></span><button class="btn ${S.proto ? 'sec2' : ''}" id="protoBtn">${S.proto ? 'Снять' : 'Поставить'}</button></div>` : ''}
   </div>`;
   // улучшения
-  h += `<div class="sec"><h3><span>⚙️ Улучшения</span></h3>` + Object.keys(C.UPGRADES).map(k => {
+  h += `<div class="sec"><h3><span>⚙️ Улучшения</span>${F.simple ? '<span>🪙 ' + Math.floor(S.coins) + '</span>' : ''}</h3>` + Object.keys(C.UPGRADES).filter(k => F.up(k)).map(k => {
     const u = C.UPGRADES[k], n = S.up[k], cost = upCost(k);
     return `<div class="row"><span class="grow"><b>${u.name}</b>${pips(n)}<div class="sub">${u.desc}: ${u.fmt(u.vals[n - 1])}${cost !== null ? ' → <b style="color:#ffcf4a">' + u.fmt(u.vals[n]) + '</b>' : ''}${k === 'drill' ? ' · порода до ' + (n + 1) : ''}</div></span>
       ${cost !== null ? `<button class="btn" data-up="${k}" ${S.coins < cost ? 'disabled' : ''}>${cost} 🪙</button>` : '<b class="ok">MAX</b>'}</div>`;
   }).join('') + `</div>`;
   // задания
-  const aq = activeQuests();
+  const aq = F.quests ? activeQuests() : [];
   if (aq.length) h += `<div class="sec"><h3><span>📋 Задания</span></h3>` + aq.map(q => `<div class="row"><span class="grow">${q.text}</span><span class="sub">+${q.reward} 🪙</span></div>`).join('') + `</div>`;
   // переезд
   if (S.built >= 1) h += `<div class="sec"><h3><span>🚃 Переезд между станциями</span></h3><div style="display:flex;flex-wrap:wrap;gap:6px">` +
     Array.from({ length: S.built + 1 }, (_, i) => `<button class="btn sec2" data-tp="${i}" ${i === b ? 'disabled' : ''}>${i === 0 ? 'Чукотка' : i === NCH ? 'Аляска' : 'Ст. ' + i}</button>`).join('') + `</div></div>`;
-  if (shopReady()) h += `<button class="btn sec2 wide" id="shopBtn">⭐ Лавка миллиардера — забавные ускорялки</button>`;
+  if (F.shop) h += `<button class="btn sec2 wide" id="shopBtn">⭐ Лавка миллиардера — забавные ускорялки</button>`;
   h += `<button class="btn good wide" id="goBtn">⛏ В вылазку</button>`;
   openSheet(b === 0 ? 'База «Чукотка»' : b === NCH ? 'База «Аляска»' : 'Станция ' + b, h);
   baseSummary = '';
@@ -1035,7 +1058,7 @@ function openBase(tab) {
     S.coins = Math.max(0, Math.floor(money)); S.fuel = Math.min(S.fuel, tankMax()); S.hull = Math.min(S.hull, hullMax());
     SFX.coin(); dirty = true; openBase();
   });
-  on('freeBtn', () => { S.fuel = Math.max(S.fuel, tankMax() * .5); S.hull = Math.max(S.hull, hullMax() * .5); toast('Выдали аварийный минимум. Смета плачет.'); dirty = true; openBase(); });
+  on('freeBtn', () => { S.fuel = Math.max(S.fuel, tankMax() * .5); S.hull = Math.max(S.hull, hullMax() * .5); toast('Выдали аварийный минимум. Копаем дальше!'); dirty = true; openBase(); });
   on('protoBtn', () => { S.proto = !S.proto; if (S.proto) say('billionaire', C.CHAPTERS_DATA[7].joke, true); dirty = true; openBase(); });
   on('buildBtn', () => buildSegment(chk));
   body.querySelectorAll('[data-cons]').forEach(e => e.onclick = () => { const k = e.dataset.cons, c = C.CONSUMABLES[k]; if (S.coins >= c.price && S.cons[k] < consCap()) { S.coins -= c.price; S.cons[k]++; SFX.coin(); dirty = true; openBase(); } });
@@ -1073,7 +1096,10 @@ function chapterIntro() {
   const c = S.built; if (S.chIntro >= c) return;
   S.chIntro = c; dirty = true; track('chapter', { c });
   banner('ГЛАВА ' + (c + 1), C.CHAPTERS_DATA[c].title);
-  setTimeout(() => dialog(C.CHAPTERS_DATA[c].intro), 1500);
+  const lines = C.CHAPTERS_DATA[c].intro.slice();
+  if (shopReady() && c === 2) lines.push(['billionaire', 'Кстати! Открыл «Лавку миллиардера» ⭐ — кот-прораб, золотой бур и прочие радости. Можно и без них, но с котом веселее.']);
+  if (shopReady() && (c === 3 || c === 4)) lines.push(['billionaire', 'В лавке новинки! Загляни на базе, если спешишь к финишу.']);
+  setTimeout(() => dialog(lines), 1500);
 }
 
 // ---------- Карта/меню ----------
@@ -1090,7 +1116,7 @@ $('strip').addEventListener('click', () => {
 $('menuBtn').addEventListener('click', () => {
   if (!S) return;
   openSheet('Меню', `<button class="btn wide" id="m-share">📣 Поделиться прогрессом</button>
-    ${shopReady() ? '<button class="btn sec2 wide" id="m-shop">⭐ Лавка миллиардера</button>' : ''}
+    ${F.shop ? '<button class="btn sec2 wide" id="m-shop">⭐ Лавка миллиардера</button>' : ''}
     <button class="btn sec2 wide" id="m-coll">💎 Коллекция и достижения</button>
     <button class="btn sec2 wide" id="m-set">⚙️ Настройки</button>
     <button class="btn sec2 wide" id="m-sos">🚨 Застрял? Эвакуация</button>
@@ -1125,7 +1151,7 @@ function openSettings() {
 // ---------- Лавка за Telegram Stars ----------
 function shopReady() { return !!(window.DIG_SHOP && inTG && tg.openInvoice && tg.isVersionAtLeast && tg.isVersionAtLeast('6.1')); }
 function openShop(fromBase) {
-  const items = C.SHOP.map(it => {
+  const items = C.SHOP.filter(it => F.item(it.id)).map(it => {
     const owned = !it.consumable && S.shop[it.id];
     const usedEst = it.id === 'estimate' && (S.estimateSeg === S.built || S.built >= NCH);
     return `<div class="row"><img src="assets/shop_${it.id}.webp" alt="" style="width:52px;height:52px;object-fit:contain;flex:none;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'${it.icon}',style:'font-size:26px;width:52px;text-align:center'}))"><span class="grow"><b>${it.name}</b><div class="sub">${it.desc}</div></span>
@@ -1146,7 +1172,7 @@ function grant(id) {
   S.buys++; dirty = true; save(true);
   SFX.build(); haptic('success'); toast(it.icon + ' ' + it.name + ' — готово!');
   if (id === 'cat') setTimeout(() => say('cat', 'Мяу. Я теперь здесь главный. Петрович в курсе.', true), 600);
-  if (id === 'estimate') setTimeout(() => say('petrovich', 'Резолюция «Согласовано»! Железа и меди теперь вдвое меньше. Чудеса бюрократии.', true), 600);
+  if (id === 'estimate') setTimeout(() => say('petrovich', 'Срочная поставка приехала! Железа и меди на этот сегмент нужно вдвое меньше.', true), 600);
 }
 function buy(id) {
   const link = window.DIG_SHOP && window.DIG_SHOP[id];
@@ -1250,10 +1276,12 @@ function showGame() {
 }
 $('playBtn').addEventListener('click', () => {
   audio(); showGame(); paused = false;
+  if (!S.tut.moved) $('tapHint').classList.remove('hidden');
   if (!S.tut.intro) { S.tut.intro = true; track('tutorial_start'); S.chIntro = 0; banner('ГЛАВА 1', C.CHAPTERS_DATA[0].title); setTimeout(() => dialog(C.CHAPTERS_DATA[0].intro), 1200); }
   else if (S.chIntro < S.built && S.built < NCH) chapterIntro();
 });
 $('collBtnT').addEventListener('click', () => { openCollection(); });
+$('brand').addEventListener('click', e => { if (inTG && tg.openTelegramLink) { e.preventDefault(); try { tg.openTelegramLink('https://t.me/moscowmap'); } catch (er) { location.href = 'https://t.me/moscowmap'; } } track('brand_click'); });
 $('setBtnT').addEventListener('click', () => { openSettings(); });
 $('sheetX').addEventListener('click', () => { if (!$('title').classList.contains('hidden')) paused = true; });
 
