@@ -211,9 +211,23 @@ function loadAll(cb) {
 }
 
 // ---------- Аналитика ----------
+// События копятся и уходят пачкой раз в 15 с (и при сворачивании) — так сервер выдерживает пики
+let evQ = [], evT = null;
 function track(ev, d) {
   if (!inTG || !window.DIG_API) return;
-  try { fetch(window.DIG_API + '/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ init: tg.initData, ev, d: d || {} }), keepalive: true }).catch(() => {}); } catch (e) {}
+  evQ.push([ev, d || null]); if (evQ.length > 40) evQ.shift();
+  if (!evT) evT = setTimeout(sendEvents, ev === 'open' ? 1500 : 15000);
+}
+function sendEvents(beacon) {
+  clearTimeout(evT); evT = null;
+  if (!evQ.length || !inTG || !window.DIG_API) return;
+  const s = S ? { built: S.built, diamonds: S.stats.diamonds, coins: Math.floor(S.coins), play: Math.floor(S.stats.playTime), done: S.done ? 1 : 0, buys: S.buys || 0, tut: S.tut.returned ? 1 : 0 } : {};
+  const body = JSON.stringify({ init: tg.initData, ev: evQ.splice(0, 40), s });
+  const url = window.DIG_API + '/e';
+  try {
+    if (beacon && navigator.sendBeacon) navigator.sendBeacon(url, new Blob([body], { type: 'text/plain' }));
+    else fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body, keepalive: true }).catch(() => {});
+  } catch (e) {}
 }
 
 // ---------- Звук и вибрация ----------
@@ -539,9 +553,15 @@ function achieve(id) {
 
 const CAT_LINES = ['Мяу. (Перевод: «где моя миска?».)', 'Мур. Я проверил грунт — тёплый, можно спать.', 'Мяу! Там алмаз. Или мышь. Копай, разберёмся.', 'Кот-прораб одобряет этот тоннель. Подпись: лапа.', 'Мяу. Корм прислали в фунтах. Пересчитываю в граммы.'];
 let oreTipT = 0;
-function showOreTip() { S.tut.oreTip = true; dirty = true; oreTipT = 10; $('oreTip').classList.remove('off'); haptic('light'); SFX.pick(); track('tip_ore'); }
+function showOreTip() { oreTipShownAt = performance.now(); S.tut.oreTip = true; dirty = true; oreTipT = 10; $('oreTip').classList.remove('off'); haptic('light'); SFX.pick(); track('tip_ore'); }
 function hideOreTip() { oreTipT = 0; $('oreTip').classList.add('off'); }
-$('oreTip').addEventListener('click', hideOreTip);
+$('oreTip').addEventListener('pointerdown', hideOreTip);
+let oreTipShownAt = 0;
+// любое касание экрана (тап, свайп в любую сторону) убирает подсказки, если их уже успели увидеть
+document.addEventListener('pointerdown', e => {
+  if (!$('tapHint').classList.contains('hidden')) hideHint();
+  if (oreTipT > 0 && performance.now() - oreTipShownAt > 1200) hideOreTip();
+}, true);
 // ---------- Обновление ----------
 let lastT = performance.now(), sayTimer = 0;
 function update(dt) {
@@ -910,7 +930,7 @@ function say(who, text, force) {
   const hudH = $('hud').getBoundingClientRect().bottom; el.style.top = (hudH + 6) + 'px';
   el.classList.remove('off'); sayTimer = Math.max(4, text.length / 14);
 }
-$('say').addEventListener('click', () => { $('say').classList.add('off'); sayTimer = 0; });
+['pointerdown', 'touchstart'].forEach(t => $('say').addEventListener(t, () => { $('say').classList.add('off'); sayTimer = 0; }, { passive: true }));
 
 let dlgQueue = [], dlgDone = null;
 function dialog(lines, done) {
@@ -923,7 +943,8 @@ function showDlg() {
   d.querySelector('img').src = ch.img; d.querySelector('small').textContent = ch.name; d.querySelector('span').textContent = text;
   d.classList.remove('hidden');
 }
-$('dialog').addEventListener('click', () => { audio(); showDlg(); });
+let dlgLast = 0;
+$('dialog').addEventListener('pointerup', () => { const n = performance.now(); if (n - dlgLast < 250) return; dlgLast = n; audio(); showDlg(); });
 
 function modal(html, acts) {
   const c = $('modalCard'); c.innerHTML = html + '<div class="acts"></div>';
@@ -1135,12 +1156,20 @@ function buildSegment(chk) {
   const here = baseAt[idx(M.x, M.y)];
   if (here === S.built && S.built < NCH) { atBase = -1; onArriveBase(S.built, false, true); }
   if (S.built >= NCH) { finale(); return; }
+  if (S.built === 1) setTimeout(askWrite, 9000);
   banner('УЧАСТОК ' + S.built + ' ГОТОВ · ТОННЕЛЬ ' + pct() + '%', C.CHAPTERS_DATA[segN].joke);
   setTimeout(() => chapterIntro(), 2800);
 }
 
+function askWrite() {
+  if (!inTG || S.askedWrite || !tg.requestWriteAccess || !tg.isVersionAtLeast('6.9')) return;
+  if (tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.allows_write_to_pm) return;
+  S.askedWrite = true; dirty = true;
+  try { tg.requestWriteAccess(ok => { track('write_access', { ok: !!ok }); if (ok) toast('🔔 Будем сообщать о новых участках и событиях'); }); } catch (e) {}
+}
+
 function chapterIntro() {
-  const c = S.built; if (S.chIntro >= c) return;
+  const c = S.built; if (S.chIntro >= c || c >= NCH) return;
   S.chIntro = c; dirty = true; track('chapter', { c });
   banner('ГЛАВА ' + (c + 1), C.CHAPTERS_DATA[c].title);
   const lines = C.CHAPTERS_DATA[c].intro.slice();
@@ -1354,7 +1383,7 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
-document.addEventListener('visibilitychange', () => { if (document.hidden) { save(true); if (S && $('sheet').classList.contains('hidden') && $('dialog').classList.contains('hidden') && $('modal').classList.contains('hidden') && $('title').classList.contains('hidden')) { paused = true; modal('<h2>⏸ Пауза</h2><p>Бур ждёт.</p>', [{ t: 'Продолжить', cls: 'btn' }]); } } });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { save(true); track('hide'); sendEvents(true); if (S && $('sheet').classList.contains('hidden') && $('dialog').classList.contains('hidden') && $('modal').classList.contains('hidden') && $('title').classList.contains('hidden')) { paused = true; modal('<h2>⏸ Пауза</h2><p>Бур ждёт.</p>', [{ t: 'Продолжить', cls: 'btn' }]); } } });
 window.addEventListener('pagehide', () => save(true));
 window.addEventListener('resize', resize);
 

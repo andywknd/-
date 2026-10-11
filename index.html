@@ -43,7 +43,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 #menuBtn{pointer-events:auto;width:34px;height:28px;border-radius:9px;background:rgba(8,18,26,.78);border:1px solid rgba(255,255,255,.1);font-size:16px;line-height:1}
 
 /* Реплики */
-#say{position:fixed;left:10px;right:10px;z-index:6;display:flex;gap:8px;align-items:flex-end;pointer-events:auto;transition:opacity .3s,transform .3s}
+#say{position:fixed;left:10px;right:10px;z-index:6;touch-action:none;display:flex;gap:8px;align-items:flex-end;pointer-events:auto;transition:opacity .3s,transform .3s}
 #say.off{opacity:0;transform:translateY(-8px);pointer-events:none}
 #say img{width:54px;height:54px;border-radius:12px;background:#264050;object-fit:cover;flex:none;border:2px solid rgba(255,255,255,.15)}
 #say .bub{background:rgba(250,250,245,.96);color:#1a2830;border-radius:12px 12px 12px 4px;padding:7px 10px;font-size:13.5px;line-height:1.3;box-shadow:0 4px 14px rgba(0,0,0,.35)}
@@ -103,7 +103,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 #tapHint .hand{position:absolute;left:14px;top:30px;font-size:44px;animation:swipe 1.6s infinite;filter:drop-shadow(0 3px 4px rgba(0,0,0,.6))}
 #tapHint .txt{font-weight:800;font-size:15px;color:#fff;text-shadow:0 2px 4px #000;margin-top:14px;max-width:240px;line-height:1.3}
 #tapHint .txt small{display:block;font-weight:600;font-size:12px;color:#ffd27a}
-#oreTip{position:fixed;left:12px;right:12px;bottom:calc(var(--sab) + 16px);z-index:9;display:flex;gap:12px;align-items:center;background:rgba(10,24,34,.94);border:2px solid #ffcf4a;border-radius:16px;padding:11px 13px;box-shadow:0 10px 30px rgba(0,0,0,.5);transition:opacity .4s,transform .4s;pointer-events:none}
+#oreTip{position:fixed;left:12px;right:12px;bottom:calc(var(--sab) + 16px);z-index:9;display:flex;gap:12px;align-items:center;background:rgba(10,24,34,.94);border:2px solid #ffcf4a;border-radius:16px;padding:11px 13px;box-shadow:0 10px 30px rgba(0,0,0,.5);transition:opacity .4s,transform .4s;pointer-events:auto;touch-action:none}
 #oreTip.off{opacity:0;transform:translateY(16px);pointer-events:none}
 #oreTip .ud{display:flex;flex-direction:column;align-items:center;font-size:22px;line-height:1.05;flex:none;width:40px}
 #oreTip .ud .a{animation:upd 1s infinite}#oreTip .ud .b{animation:dnd 1s infinite}
@@ -127,7 +127,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .modal .acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .modal .acts .btn{flex:1}
 
-#dialog{position:fixed;inset:0;z-index:45;background:rgba(3,8,12,.55);display:flex;align-items:flex-end;justify-content:center;padding:14px 12px calc(var(--sab) + 18px)}
+#dialog{position:fixed;inset:0;z-index:45;touch-action:none;background:rgba(3,8,12,.55);display:flex;align-items:flex-end;justify-content:center;padding:14px 12px calc(var(--sab) + 18px)}
 #dialog .dl{display:flex;gap:10px;align-items:flex-end;max-width:520px;width:100%}
 #dialog img{width:96px;height:96px;object-fit:contain;flex:none;filter:drop-shadow(0 4px 8px rgba(0,0,0,.5))}
 #dialog .bub{flex:1;background:#fbfaf3;color:#1a2830;border-radius:16px 16px 16px 4px;padding:11px 13px;font-size:15.5px;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,.4)}
@@ -218,7 +218,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 <div id="finale" class="screen hidden" style="background:#0b1620"><canvas id="finc"></canvas><div class="body" id="finBody" style="padding:12px 14px calc(var(--sab) + 16px);overflow:auto;flex:1;touch-action:pan-y"></div></div>
 
 <script src="config.js?v=6"></script>
-<script src="shop-links.js?v=4"></script>
-<script src="game.js?v=6"></script>
+<script src="shop-links.js?v=7"></script>
+<script src="game.js?v=7"></script>
 </body>
 </html>

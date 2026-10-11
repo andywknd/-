@@ -1,23 +1,32 @@
 """Бот @digtunnelbot для игры «Докопаться до Америки».
 
-Нагрузка: сама игра раздаётся с GitHub Pages (CDN) и живёт в телефоне игрока,
-бот отвечает только на /start, inline-шаринг и пару админ-команд.
+Архитектура под пиковую нагрузку:
+- игра раздаётся с GitHub Pages (CDN) и считается в телефоне игрока;
+- этот процесс: Telegram-бот (long polling) + маленький HTTP API на 127.0.0.1:8090
+  для статистики (за nginx с HTTPS и лимитами). События копятся в памяти и пишутся
+  в SQLite пачкой раз в 2 секунды — тысячи событий в секунду не нагружают диск.
 """
 import asyncio
+import csv
+import hashlib
+import hmac
+import io
+import json
 import logging
 import os
 import sqlite3
 import time
 from pathlib import Path
+from urllib.parse import parse_qsl
 
+from aiohttp import web
 from aiogram import Bot, Dispatcher, F
-from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError, TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import (
-    FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, InlineQuery,
-    InlineQueryResultPhoto, LabeledPrice, MenuButtonWebApp, Message, PreCheckoutQuery, WebAppInfo,
+    BufferedInputFile, CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup,
+    InlineQuery, InlineQueryResultPhoto, LabeledPrice, MenuButtonWebApp, Message, PreCheckoutQuery, WebAppInfo,
 )
-import json
 
 BASE = Path(__file__).resolve().parent
 
@@ -38,6 +47,8 @@ GAME_URL = os.environ.get("GAME_URL", "https://andywknd.github.io/-/").rstrip("/
 APP_SHORT = os.environ.get("APP_SHORT", "play").strip()
 ADMINS = {int(x) for x in os.environ.get("ADMINS", "643643").replace(" ", "").split(",") if x}
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "digtunnelbot")
+API_URL = os.environ.get("API_URL", "").rstrip("/")
+API_PORT = int(os.environ.get("API_PORT", "8090"))
 PROMO_URL = GAME_URL + "assets/promo.jpg"
 PROMO_FILE = BASE.parent / "assets" / "promo.jpg"
 
@@ -48,15 +59,6 @@ TITLES = ["Стажёр бура", "Бригадир мерзлоты", "Под�
           "Алмазный отвлекатор", "Мастер эвакуации", "Соединитель континентов"]
 DISTRACT = ["почти никогда", "иногда", "постоянно"]
 
-# ---------- статистика (SQLite, WAL — выдерживает тысячи записей в секунду) ----------
-db = sqlite3.connect(BASE / "stats.db", check_same_thread=False, isolation_level=None)
-db.execute("PRAGMA journal_mode=WAL")
-db.execute("PRAGMA synchronous=NORMAL")
-db.execute("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, first REAL, ref TEXT)")
-db.execute("CREATE TABLE IF NOT EXISTS events(t REAL, uid INTEGER, ev TEXT)")
-db.execute("CREATE TABLE IF NOT EXISTS purchases(charge TEXT PRIMARY KEY, uid INTEGER, item TEXT, stars INTEGER, t REAL, refunded INTEGER DEFAULT 0)")
-
-# Товары лавки (должны совпадать с CFG.SHOP в config.js)
 PRODUCTS = {
     "skin_gold": ("Золотой бур", "Позолоченная буровая с искрами. Чистая косметика.", 25),
     "cat": ("Кот-прораб", "Кот в каске на крыше буровой. Комментирует стройку.", 15),
@@ -67,21 +69,198 @@ PRODUCTS = {
     "estimate": ("Срочная поставка", "Для текущего сегмента нужно вдвое меньше железа и меди.", 35),
 }
 
+# ---------- база ----------
+db = sqlite3.connect(BASE / "stats.db", check_same_thread=False, isolation_level=None)
+db.execute("PRAGMA journal_mode=WAL")
+db.execute("PRAGMA synchronous=NORMAL")
+db.execute("PRAGMA busy_timeout=5000")
+db.executescript("""
+CREATE TABLE IF NOT EXISTS players(
+  uid INTEGER PRIMARY KEY, first REAL, last REAL, name TEXT, username TEXT, lang TEXT, premium INTEGER DEFAULT 0,
+  ref TEXT DEFAULT '', started INTEGER DEFAULT 0, can_write INTEGER DEFAULT 0, blocked INTEGER DEFAULT 0,
+  sessions INTEGER DEFAULT 0, built INTEGER DEFAULT 0, diamonds INTEGER DEFAULT 0, coins INTEGER DEFAULT 0,
+  play INTEGER DEFAULT 0, done INTEGER DEFAULT 0, buys INTEGER DEFAULT 0, shares INTEGER DEFAULT 0, tut INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS events(t REAL, uid INTEGER, ev TEXT, d TEXT);
+CREATE INDEX IF NOT EXISTS ev_t ON events(t);
+CREATE INDEX IF NOT EXISTS ev_ev ON events(ev);
+CREATE INDEX IF NOT EXISTS pl_last ON players(last);
+CREATE TABLE IF NOT EXISTS purchases(charge TEXT PRIMARY KEY, uid INTEGER, item TEXT, stars INTEGER, t REAL, refunded INTEGER DEFAULT 0);
+""")
+# перенос из старой таблицы users (первая версия бота)
+try:
+    db.execute("INSERT OR IGNORE INTO players(uid, first, last, ref, started) SELECT id, first, first, ref, 1 FROM users")
+except sqlite3.OperationalError:
+    pass
 
-def remember(uid: int, ref: str = ""):
+# буферы для пакетной записи
+EV_BUF: list[tuple] = []
+PL_BUF: dict[int, dict] = {}
+
+
+def touch_player(uid: int, **f):
+    p = PL_BUF.setdefault(uid, {})
+    for k, v in f.items():
+        if k in ("sessions_inc", "shares_inc"):
+            p[k] = p.get(k, 0) + v
+        elif v is not None:
+            p[k] = v
+
+
+def add_event(uid: int, ev: str, d=None, t=None):
+    EV_BUF.append((t or time.time(), uid, ev[:40], json.dumps(d, ensure_ascii=False)[:500] if d else None))
+
+
+def flush():
+    global EV_BUF, PL_BUF
+    if not EV_BUF and not PL_BUF:
+        return
+    evs, pls = EV_BUF, PL_BUF
+    EV_BUF, PL_BUF = [], {}
+    now = time.time()
     try:
-        db.execute("INSERT OR IGNORE INTO users(id, first, ref) VALUES(?,?,?)", (uid, time.time(), ref))
-    except Exception as e:  # статистика не должна ронять бота
-        log.warning("db: %s", e)
-
-
-def event(uid: int, ev: str):
-    try:
-        db.execute("INSERT INTO events(t, uid, ev) VALUES(?,?,?)", (time.time(), uid, ev))
+        db.execute("BEGIN")
+        if evs:
+            db.executemany("INSERT INTO events(t, uid, ev, d) VALUES(?,?,?,?)", evs)
+        for uid, p in pls.items():
+            db.execute("INSERT OR IGNORE INTO players(uid, first, last) VALUES(?,?,?)", (uid, now, now))
+            sets, vals = ["last=?"], [now]
+            for k in ("name", "username", "lang", "premium", "built", "diamonds", "coins", "play", "done", "buys", "tut"):
+                if k in p:
+                    sets.append(f"{k}=MAX({k}, ?)" if k in ("built", "play", "done", "buys", "diamonds", "tut") else f"{k}=?")
+                    vals.append(p[k])
+            for k in ("started", "can_write"):
+                if p.get(k):
+                    sets.append(f"{k}=1")
+            if p.get("ref"):
+                sets.append("ref=CASE WHEN ref='' OR ref IS NULL THEN ? ELSE ref END")
+                vals.append(p["ref"])
+            if p.get("sessions_inc"):
+                sets.append("sessions=sessions+?")
+                vals.append(p["sessions_inc"])
+            if p.get("shares_inc"):
+                sets.append("shares=shares+?")
+                vals.append(p["shares_inc"])
+            if p.get("unblock"):
+                sets.append("blocked=0")
+            vals.append(uid)
+            db.execute(f"UPDATE players SET {', '.join(sets)} WHERE uid=?", vals)
+        db.execute("COMMIT")
     except Exception as e:
-        log.warning("db: %s", e)
+        log.warning("flush: %s", e)
+        try:
+            db.execute("ROLLBACK")
+        except Exception:
+            pass
 
 
+async def flusher():
+    while True:
+        await asyncio.sleep(2)
+        flush()
+
+
+# ---------- проверка initData от Telegram ----------
+SECRET = hmac.new(b"WebAppData", TOKEN.encode(), hashlib.sha256).digest()
+
+
+def check_init(init: str) -> dict | None:
+    try:
+        data = dict(parse_qsl(init, strict_parsing=True))
+        h = data.pop("hash", "")
+        dcs = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
+        calc = hmac.new(SECRET, dcs.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(calc, h):
+            return None
+        if time.time() - int(data.get("auth_date", 0)) > 7 * 86400:
+            return None
+        user = json.loads(data.get("user", "{}"))
+        if not user.get("id"):
+            return None
+        user["_start"] = data.get("start_param", "")
+        return user
+    except Exception:
+        return None
+
+
+# ---------- HTTP API ----------
+LAST_HIT: dict[int, float] = {}
+ALLOWED_EV = {"open", "tutorial_start", "tutorial_done", "sortie", "sortie_end", "first_diamond_found",
+              "diamond_delivered", "sale", "upgrade", "accident", "segment", "chapter", "finale",
+              "share_card", "buy_open", "buy_paid", "tip_ore", "brand_click", "write_access", "hide"}
+
+
+def cors(resp):
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    return resp
+
+
+async def api_events(req: web.Request):
+    if req.method == "OPTIONS":
+        return cors(web.Response(status=204))
+    if req.content_length and req.content_length > 16384:
+        return cors(web.Response(status=413))
+    try:
+        body = json.loads(await req.text())
+    except Exception:
+        return cors(web.Response(status=400))
+    user = check_init(body.get("init", ""))
+    if not user:
+        return cors(web.Response(status=403))
+    uid = int(user["id"])
+    now = time.time()
+    if now - LAST_HIT.get(uid, 0) < 2:  # не чаще раза в 2 секунды на игрока
+        return cors(web.Response(status=429))
+    LAST_HIT[uid] = now
+    s = body.get("s") or {}
+    evs = body.get("ev") or []
+    fields = dict(name=((user.get("first_name") or "") + " " + (user.get("last_name") or "")).strip()[:64],
+                  username=(user.get("username") or "")[:32], lang=(user.get("language_code") or "")[:8],
+                  premium=1 if user.get("is_premium") else 0, ref=(user.get("_start") or "")[:32] or None)
+    if user.get("allows_write_to_pm"):
+        fields["can_write"] = 1
+    for k in ("built", "diamonds", "coins", "play", "done", "buys", "tut"):
+        try:
+            if k in s:
+                fields[k] = int(s[k])
+        except (TypeError, ValueError):
+            pass
+    n_open = n_share = 0
+    for e in evs[:50]:
+        try:
+            ev = str(e[0])
+            if ev not in ALLOWED_EV:
+                continue
+            d = e[1] if len(e) > 1 and isinstance(e[1], dict) else None
+            add_event(uid, ev, d)
+            if ev == "open":
+                n_open += 1
+            elif ev == "share_card":
+                n_share += 1
+            elif ev == "write_access" and d and d.get("ok"):
+                fields["can_write"] = 1
+        except Exception:
+            continue
+    touch_player(uid, sessions_inc=n_open, shares_inc=n_share, **fields)
+    return cors(web.Response(status=204))
+
+
+async def api_health(req):
+    return web.json_response({"ok": True, "buffer": len(EV_BUF)})
+
+
+async def start_api():
+    app = web.Application(client_max_size=32 * 1024)
+    app.router.add_route("*", "/api/e", api_events)
+    app.router.add_get("/api/health", api_health)
+    runner = web.AppRunner(app, access_log=None)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", API_PORT, backlog=2048).start()
+    log.info("API on 127.0.0.1:%s (%s)", API_PORT, API_URL or "без публичного адреса")
+
+
+# ---------- бот ----------
 def app_link(start: str = "") -> str:
     if APP_SHORT:
         return f"https://t.me/{BOT_USERNAME}/{APP_SHORT}" + (f"?startapp={start}" if start else "")
@@ -99,10 +278,10 @@ def play_kb_link(start: str = "") -> InlineKeyboardMarkup:
 bot = Bot(TOKEN)
 dp = Dispatcher()
 promo_file_id: str | None = None
+is_admin = F.from_user.id.in_(ADMINS)
 
 
 async def send_safe(coro_factory):
-    """Повтор при флуд-лимите Telegram, чтобы при наплыве никто не остался без ответа."""
     for _ in range(3):
         try:
             return await coro_factory()
@@ -113,23 +292,27 @@ async def send_safe(coro_factory):
             return None
 
 
+def promo_photo():
+    return promo_file_id or (FSInputFile(PROMO_FILE) if PROMO_FILE.exists() else PROMO_URL)
+
+
 START_TEXT = (
     "🚇 <b>Докопаться до Америки</b>\n\n"
     "Пока все обсуждают тоннель между Россией и США — ты копаешь.\n"
     "Веди буровую от Чукотки до Аляски, добывай золото и алмазы, "
     "чини протечки и не взорвись на газе.\n\n"
-    "<i>Сатира. Все персонажи и события вымышлены.</i>"
+    "<i>Игра от «Новостей Москвы». Все персонажи и события вымышлены.</i>"
 )
 
 
 @dp.message(CommandStart())
 async def start(m: Message, command: CommandObject):
     global promo_file_id
-    ref = (command.args or "")[:32]
-    remember(m.from_user.id, ref)
-    event(m.from_user.id, "start")
-    photo = promo_file_id or (FSInputFile(PROMO_FILE) if PROMO_FILE.exists() else PROMO_URL)
-    res = await send_safe(lambda: m.answer_photo(photo, caption=START_TEXT, parse_mode="HTML", reply_markup=play_kb_private()))
+    u = m.from_user
+    touch_player(u.id, started=1, unblock=1, name=(u.full_name or "")[:64], username=(u.username or "")[:32],
+                 lang=(u.language_code or "")[:8], premium=1 if u.is_premium else 0, ref=(command.args or "")[:32] or None)
+    add_event(u.id, "bot_start", {"ref": command.args} if command.args else None)
+    res = await send_safe(lambda: m.answer_photo(promo_photo(), caption=START_TEXT, parse_mode="HTML", reply_markup=play_kb_private()))
     if res and res.photo and not promo_file_id:
         promo_file_id = res.photo[-1].file_id
 
@@ -138,7 +321,6 @@ async def start(m: Message, command: CommandObject):
 async def inline(q: InlineQuery):
     parts = (q.query or "").split()
     uid = q.from_user.id
-    remember(uid)
     caption = "🚇 Докопаться до Америки. Пока все обсуждают — ты копаешь."
     title = "Позвать копать тоннель"
     if len(parts) >= 6 and parts[0] == "r":
@@ -154,7 +336,6 @@ async def inline(q: InlineQuery):
                            f"🙈 От основной задачи отвлекался: {w}.\n🏅 Звание: «{t}»")
             caption += "\n\nА ты докопаешься быстрее?"
             title = f"Мой тоннель: {p}% · «{t}»"
-            event(uid, "share")
         except ValueError:
             pass
     result = InlineQueryResultPhoto(
@@ -165,10 +346,15 @@ async def inline(q: InlineQuery):
     await send_safe(lambda: q.answer([result], cache_time=30, is_personal=True))
 
 
+@dp.chosen_inline_result()
+async def chosen(r):
+    touch_player(r.from_user.id, shares_inc=1)
+    add_event(r.from_user.id, "share_sent")
+
+
 # ---------- Telegram Stars ----------
-@dp.message(Command("links"), F.from_user.id.in_(ADMINS))
+@dp.message(Command("links"), is_admin)
 async def links(m: Message):
-    """Создаёт многоразовые ссылки на счета для лавки и выдаёт готовый shop-links.js."""
     out = {}
     for pid, (title, desc, stars) in PRODUCTS.items():
         out[pid] = await bot.create_invoice_link(
@@ -176,6 +362,8 @@ async def links(m: Message):
             prices=[LabeledPrice(label=title, amount=stars)],
         )
     js = "window.DIG_SHOP = " + json.dumps(out, ensure_ascii=False, indent=1) + ";"
+    if API_URL:
+        js += f'\nwindow.DIG_API = "{API_URL}";'
     await m.answer("Скопируй всё сообщение ниже и пришли Claude:")
     await m.answer(js)
 
@@ -196,6 +384,7 @@ async def paid(m: Message):
                    (sp.telegram_payment_charge_id, m.from_user.id, pid, sp.total_amount, time.time()))
     except Exception as e:
         log.warning("db purchase: %s", e)
+    add_event(m.from_user.id, "paid", {"item": pid, "stars": sp.total_amount})
     name = PRODUCTS.get(pid, ("покупка",))[0]
     await send_safe(lambda: m.answer(f"⭐ Спасибо! «{name}» уже в игре. Возвращайся копать 👇", reply_markup=play_kb_private()))
 
@@ -215,9 +404,8 @@ async def terms(m: Message):
                    "Игра полностью проходится без покупок. Возврат — через /paysupport.")
 
 
-@dp.message(Command("refund"), F.from_user.id.in_(ADMINS))
+@dp.message(Command("refund"), is_admin)
 async def refund(m: Message, command: CommandObject):
-    """/refund <user_id> <charge_id>"""
     try:
         uid, charge = (command.args or "").split()
         await bot.refund_star_payment(user_id=int(uid), telegram_payment_charge_id=charge)
@@ -227,54 +415,228 @@ async def refund(m: Message, command: CommandObject):
         await m.answer(f"❌ {e}\nФормат: /refund <user_id> <charge_id>")
 
 
-@dp.message(Command("stats"), F.from_user.id.in_(ADMINS))
+# ---------- статистика ----------
+def q1(sql, *a):
+    return db.execute(sql, a).fetchone()[0] or 0
+
+
+def pct(a, b):
+    return f"{(100 * a / b):.0f}%" if b else "—"
+
+
+@dp.message(Command("stats"), is_admin)
 async def stats(m: Message):
-    day = time.time() - 86400
-    hour = time.time() - 3600
-    users = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    new24 = db.execute("SELECT COUNT(*) FROM users WHERE first>?", (day,)).fetchone()[0]
-    new1h = db.execute("SELECT COUNT(*) FROM users WHERE first>?", (hour,)).fetchone()[0]
-    shares = db.execute("SELECT COUNT(*) FROM events WHERE ev='share'").fetchone()[0]
-    shares24 = db.execute("SELECT COUNT(*) FROM events WHERE ev='share' AND t>?", (day,)).fetchone()[0]
-    refs = db.execute("SELECT COUNT(*) FROM users WHERE ref LIKE 'r%'").fetchone()[0]
+    flush()
+    now = time.time()
+    h1, d1, d2 = now - 3600, now - 86400, now - 2 * 86400
+    total = q1("SELECT COUNT(*) FROM players")
+    players = q1("SELECT COUNT(*) FROM players WHERE sessions>0")
+    new1h = q1("SELECT COUNT(*) FROM players WHERE first>?", h1)
+    new24 = q1("SELECT COUNT(*) FROM players WHERE first>?", d1)
+    online = q1("SELECT COUNT(*) FROM players WHERE last>?", now - 300)
+    act1h = q1("SELECT COUNT(*) FROM players WHERE last>?", h1)
+    act24 = q1("SELECT COUNT(*) FROM players WHERE last>?", d1)
+    started = q1("SELECT COUNT(*) FROM players WHERE started=1")
+    reach = q1("SELECT COUNT(*) FROM players WHERE (started=1 OR can_write=1) AND blocked=0")
+    tut = q1("SELECT COUNT(DISTINCT uid) FROM events WHERE ev='tutorial_done'")
+    b = [q1("SELECT COUNT(*) FROM players WHERE built>=?", n) for n in (1, 3, 5, 8, 10)]
+    sessions = q1("SELECT SUM(sessions) FROM players")
+    avg_play = q1("SELECT AVG(play) FROM players WHERE sessions>0")
+    cohort = q1("SELECT COUNT(*) FROM players WHERE first BETWEEN ? AND ?", d2, d1)
+    ret = q1("SELECT COUNT(*) FROM players WHERE first BETWEEN ? AND ? AND last > first + 72000", d2, d1)
+    shares = q1("SELECT SUM(shares) FROM players")
+    refs = q1("SELECT COUNT(*) FROM players WHERE ref LIKE 'r%'")
+    from_ch = q1("SELECT COUNT(*) FROM players WHERE ref='ch'")
+    premium = q1("SELECT COUNT(*) FROM players WHERE premium=1")
     buys, stars_sum = db.execute("SELECT COUNT(*), COALESCE(SUM(stars),0) FROM purchases WHERE refunded=0").fetchone()
+    payers = q1("SELECT COUNT(DISTINCT uid) FROM purchases WHERE refunded=0")
     top = db.execute("SELECT item, COUNT(*) FROM purchases WHERE refunded=0 GROUP BY item ORDER BY 2 DESC LIMIT 7").fetchall()
-    await m.answer(
-        f"📊 Пользователи бота: {users}\n• за 24 ч: {new24}\n• за час: {new1h}\n"
-        f"📣 Шаринги карточки: {shares} (за 24 ч: {shares24})\n🔗 Пришли по приглашению: {refs}\n"
-        f"⭐ Покупки: {buys} на {stars_sum} звёзд" + ("".join(f"\n  • {PRODUCTS.get(i, (i,))[0]}: {n}" for i, n in top)) + "\n\n"
-        f"Игроков, открывших Mini App по прямой ссылке, смотри в BotFather → Bot Settings → Statistics "
-        f"(или @BotFather /mybots → Statistics)."
+    acc = db.execute("SELECT json_extract(d,'$.cause'), COUNT(*) FROM events WHERE ev='accident' GROUP BY 1 ORDER BY 2 DESC LIMIT 4").fetchall()
+    langs = db.execute("SELECT lang, COUNT(*) FROM players WHERE lang!='' GROUP BY lang ORDER BY 2 DESC LIMIT 4").fetchall()
+    cause = {"fuel": "топливо", "hull": "корпус", "leak": "протечка", "sos": "SOS"}
+    txt = (
+        f"📊 <b>Статистика «Докопаться до Америки»</b>\n\n"
+        f"👥 <b>Игроки</b>\n"
+        f"• всего открыли игру: <b>{players}</b> (+ только бот: {total - players})\n"
+        f"• новых за час / 24 ч: {new1h} / {new24}\n"
+        f"• сейчас онлайн (5 мин): <b>{online}</b>\n"
+        f"• активных за час / 24 ч: {act1h} / {act24}\n"
+        f"• сессий всего: {sessions}, среднее время в игре: {int(avg_play // 60)} мин\n"
+        f"• вернулись на следующий день: {pct(ret, cohort)} (из {cohort})\n"
+        f"• Premium: {premium}\n\n"
+        f"🪜 <b>Воронка</b>\n"
+        f"• прошли обучение: {tut} ({pct(tut, players)})\n"
+        f"• построили 1 / 3 / 5 / 8 участков: {b[0]} / {b[1]} / {b[2]} / {b[3]}\n"
+        f"• докопались до Америки: <b>{b[4]}</b> ({pct(b[4], players)})\n\n"
+        f"📣 <b>Вирусность</b>\n"
+        f"• отправлено карточек: {shares}\n"
+        f"• пришли по приглашению друга: {refs}\n"
+        f"• пришли из поста в канале: {from_ch}\n\n"
+        f"⭐ <b>Звёзды</b>\n"
+        f"• покупок: {buys} на <b>{stars_sum}</b> ⭐, платящих: {payers} ({pct(payers, players)})"
+        + "".join(f"\n  · {PRODUCTS.get(i, (i,))[0]}: {n}" for i, n in top) + "\n\n"
+        f"💥 Аварии: " + (", ".join(f"{cause.get(c, c)} {n}" for c, n in acc) or "нет") + "\n"
+        f"🌍 Языки: " + (", ".join(f"{l} {n}" for l, n in langs) or "—") + "\n\n"
+        f"📨 Доступно для рассылки: <b>{reach}</b> (нажали Start: {started})\n"
+        f"Выгрузка всех игроков: /export"
     )
+    await m.answer(txt, parse_mode="HTML")
 
 
-@dp.message(Command("post"), F.from_user.id.in_(ADMINS))
+@dp.message(Command("export"), is_admin)
+async def export(m: Message):
+    flush()
+    cur = db.execute("SELECT uid, name, username, lang, premium, ref, started, can_write, blocked, sessions, built, done, "
+                     "diamonds, coins, play, buys, shares, datetime(first,'unixepoch'), datetime(last,'unixepoch') FROM players ORDER BY first")
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=";")
+    w.writerow(["id", "имя", "username", "язык", "premium", "откуда", "нажал_start", "можно_писать", "заблокировал",
+                "сессий", "участков", "прошёл", "алмазов", "монет", "сек_в_игре", "покупок", "шарингов", "первый_вход_UTC", "последний_UTC"])
+    w.writerows(cur.fetchall())
+    data = ("﻿" + buf.getvalue()).encode("utf-8")
+    await m.answer_document(BufferedInputFile(data, filename=f"players_{time.strftime('%Y%m%d_%H%M')}.csv"),
+                            caption="Все игроки (открывается в Excel / Google Таблицах)")
+
+
+# ---------- рассылка ----------
+BC_STATE: dict[int, dict] = {}
+BC_RUNNING = {"on": False, "stop": False}
+
+
+def bc_recipients():
+    return [r[0] for r in db.execute("SELECT uid FROM players WHERE (started=1 OR can_write=1) AND blocked=0")]
+
+
+@dp.message(Command("broadcast"), is_admin)
+async def bc_begin(m: Message):
+    if BC_RUNNING["on"]:
+        await m.answer("Рассылка уже идёт. Остановить: /stopbroadcast")
+        return
+    BC_STATE[m.from_user.id] = {"step": "wait"}
+    flush()
+    await m.answer(f"📨 Пришли сообщение для рассылки — текст, фото, видео или пост с подписью.\n"
+                   f"Получателей сейчас: <b>{len(bc_recipients())}</b>.\nОтмена: /cancel", parse_mode="HTML")
+
+
+@dp.message(Command("cancel"), is_admin)
+async def bc_cancel(m: Message):
+    BC_STATE.pop(m.from_user.id, None)
+    await m.answer("Отменено.")
+
+
+@dp.message(Command("stopbroadcast"), is_admin)
+async def bc_stop(m: Message):
+    BC_RUNNING["stop"] = True
+    await m.answer("Останавливаю рассылку…")
+
+
+@dp.message(is_admin, lambda m: BC_STATE.get(m.from_user.id, {}).get("step") == "wait")
+async def bc_got(m: Message):
+    BC_STATE[m.from_user.id] = {"step": "confirm", "chat": m.chat.id, "msg": m.message_id, "btn": True}
+    await bot.copy_message(m.chat.id, m.chat.id, m.message_id, reply_markup=play_kb_private())
+    await m.answer(f"☝️ Так увидят игроки (с кнопкой «Копать»). Отправить <b>{len(bc_recipients())}</b> получателям?",
+                   parse_mode="HTML", reply_markup=bc_kb(True))
+
+
+def bc_kb(btn: bool):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Отправить всем", callback_data="bc:go")],
+        [InlineKeyboardButton(text=("☑️ С кнопкой «Копать»" if btn else "⬜ Без кнопки"), callback_data="bc:btn")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="bc:no")],
+    ])
+
+
+@dp.callback_query(F.data.startswith("bc:"), is_admin)
+async def bc_cb(c: CallbackQuery):
+    st = BC_STATE.get(c.from_user.id)
+    if not st or st.get("step") != "confirm":
+        await c.answer("Нет черновика. Начни с /broadcast", show_alert=True)
+        return
+    if c.data == "bc:no":
+        BC_STATE.pop(c.from_user.id, None)
+        await c.message.edit_text("Рассылка отменена.")
+    elif c.data == "bc:btn":
+        st["btn"] = not st["btn"]
+        await c.message.edit_reply_markup(reply_markup=bc_kb(st["btn"]))
+    elif c.data == "bc:go":
+        BC_STATE.pop(c.from_user.id, None)
+        await c.message.edit_text("🚀 Рассылка запущена. Прогресс будет здесь. Остановить: /stopbroadcast")
+        asyncio.create_task(bc_run(c.message.chat.id, st))
+    await c.answer()
+
+
+async def bc_run(admin_chat: int, st: dict):
+    BC_RUNNING.update(on=True, stop=False)
+    flush()
+    ids = bc_recipients()
+    ok = fail = blocked = 0
+    started = time.time()
+    status = await bot.send_message(admin_chat, f"📨 0 / {len(ids)}")
+    kb = play_kb_private() if st["btn"] else None
+    for i, uid in enumerate(ids, 1):
+        if BC_RUNNING["stop"]:
+            break
+        for _ in range(3):
+            try:
+                await bot.copy_message(uid, st["chat"], st["msg"], reply_markup=kb)
+                ok += 1
+                break
+            except TelegramRetryAfter as e:
+                await asyncio.sleep(e.retry_after + 1)
+            except TelegramForbiddenError:
+                blocked += 1
+                db.execute("UPDATE players SET blocked=1 WHERE uid=?", (uid,))
+                break
+            except Exception:
+                fail += 1
+                break
+        await asyncio.sleep(0.04)  # ≈25 сообщений/с — ниже лимита Telegram (30/с)
+        if i % 300 == 0:
+            try:
+                await status.edit_text(f"📨 {i} / {len(ids)} · доставлено {ok} · заблокировали бота {blocked}")
+            except Exception:
+                pass
+    BC_RUNNING["on"] = False
+    took = int(time.time() - started)
+    await bot.send_message(admin_chat, f"✅ Рассылка {'остановлена' if BC_RUNNING['stop'] else 'завершена'} за {took // 60} мин {took % 60} с\n"
+                                       f"Доставлено: {ok}\nЗаблокировали бота: {blocked}\nОшибки: {fail}")
+
+
+# ---------- посты в канал ----------
+POST_TEXT = (
+    "🚇 <b>Тоннель Россия — США? Копаем сами!</b>\n\n"
+    "Пока все обсуждают — ты копаешь. Веди буровую от Чукотки до Аляски, "
+    "добывай алмазы, спасай тоннель от протечек и посмотри, кто из друзей докопается первым.\n\n"
+    "👇 Игра открывается прямо в Telegram"
+)
+
+
+@dp.message(Command("post"), is_admin)
 async def post(m: Message, command: CommandObject):
-    """/post @channel — опубликовать промо-пост с кнопкой (бот должен быть админом канала)."""
     target = (command.args or "").strip()
     if not target:
         await m.answer("Использование: /post @канал\nСначала добавь бота администратором канала с правом публикации.")
         return
-    text = (
-        "🚇 <b>Тоннель Россия — США? Копаем сами!</b>\n\n"
-        "Пока все обсуждают — ты копаешь. Веди буровую от Чукотки до Аляски, "
-        "добывай алмазы, спасай тоннель от протечек и посмотри, кто из друзей докопается первым.\n\n"
-        "👇 Игра открывается прямо в Telegram"
-    )
-    photo = promo_file_id or (FSInputFile(PROMO_FILE) if PROMO_FILE.exists() else PROMO_URL)
     try:
-        await bot.send_photo(target, photo, caption=text, parse_mode="HTML", reply_markup=play_kb_link("ch"))
+        await bot.send_photo(target, promo_photo(), caption=POST_TEXT, parse_mode="HTML", reply_markup=play_kb_link("ch"))
         await m.answer("✅ Опубликовано в " + target)
     except Exception as e:
         await m.answer(f"❌ Не получилось: {e}\nПроверь, что бот — админ канала с правом публикации.")
 
 
-@dp.message(Command("preview"), F.from_user.id.in_(ADMINS))
+@dp.message(Command("preview"), is_admin)
 async def preview(m: Message):
-    text = ("🚇 <b>Тоннель Россия — США? Копаем сами!</b>\n\nПока все обсуждают — ты копаешь…\n\n"
-            "👇 Игра открывается прямо в Telegram")
-    photo = promo_file_id or (FSInputFile(PROMO_FILE) if PROMO_FILE.exists() else PROMO_URL)
-    await m.answer_photo(photo, caption=text, parse_mode="HTML", reply_markup=play_kb_link("ch"))
+    await m.answer_photo(promo_photo(), caption=POST_TEXT, parse_mode="HTML", reply_markup=play_kb_link("ch"))
+
+
+@dp.message(Command("admin"), is_admin)
+async def admin_help(m: Message):
+    await m.answer(
+        "🛠 Команды админа:\n"
+        "/stats — полная статистика\n/export — все игроки в CSV\n"
+        "/broadcast — рассылка по игрокам\n/stopbroadcast — остановить рассылку\n"
+        "/preview — показать пост для канала\n/post @канал — опубликовать пост\n"
+        "/links — ссылки на оплату для лавки\n/refund id charge — вернуть звёзды")
 
 
 @dp.message()
@@ -283,13 +645,19 @@ async def other(m: Message):
 
 
 async def main():
+    await start_api()
+    asyncio.create_task(flusher())
     try:
         await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="Играть", web_app=WebAppInfo(url=GAME_URL)))
     except Exception as e:
         log.warning("menu button: %s", e)
     me = await bot.get_me()
     log.info("bot @%s started, game %s", me.username, GAME_URL)
-    await dp.start_polling(bot, allowed_updates=["message", "inline_query", "pre_checkout_query"])
+    try:
+        await dp.start_polling(bot, allowed_updates=["message", "inline_query", "chosen_inline_result",
+                                                     "pre_checkout_query", "callback_query"])
+    finally:
+        flush()
 
 
 if __name__ == "__main__":
