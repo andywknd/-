@@ -272,6 +272,61 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 @keyframes fldt{0%{opacity:0;transform:scale(.6)}60%{opacity:1;transform:scale(1.1)}100%{opacity:1;transform:scale(1)}}
 .fldimg{text-align:center;font-size:56px;line-height:1}
 .fldimg .ic{height:64px}
+
+/* ===== Компактный экран базы ===== */
+.bloot{text-align:center;font-size:16px;font-weight:700;margin:2px 0 8px}
+.bloot .bl{color:#9db4c2;font-weight:600}
+.bloot .ic{height:26px;vertical-align:-7px}
+.bloot b{color:#ffcf4a;margin-left:4px}
+.bex{text-align:center;font-size:13px;color:#ffd9f0;margin:-4px 0 8px}
+.bsvc{text-align:center;font-size:12px;color:#9db4c2;margin:-4px 0 10px}
+.route .rt{text-align:center;font-size:15px;margin-bottom:4px}
+.route .rt b{color:#ffcf4a;font-size:17px}
+.goal .gnext{font-size:14.5px;margin:10px 0 4px}
+.goal .bonus{font-size:11.5px;margin-top:6px}
+.ups-h .uhr{display:flex;align-items:center;gap:8px}
+.btn.sm{padding:6px 12px;font-size:13px;border-image-width:10px 12px}
+.urec{display:flex;align-items:center;gap:10px;background:var(--panel2);border-radius:14px;padding:8px 10px;margin-bottom:10px}
+.urec>img{width:54px;height:54px;object-fit:contain;flex:none;filter:drop-shadow(0 3px 4px rgba(0,0,0,.4))}
+.urec .ut{flex:1;min-width:0;line-height:1.25}
+.urec .ut b{font-size:15px}.urec .ut small{color:#ffcf4a;font-weight:800;font-size:12px}
+.urec .ut span{display:block;font-size:11.5px;color:#9db4c2;margin-top:2px}
+.urec .btn{flex:none;padding:10px 14px}
+.fold{background:var(--panel2);border-radius:14px;margin-bottom:8px;overflow:hidden}
+.fold summary{list-style:none;cursor:pointer;padding:12px 14px;font-weight:800;font-size:14px;display:flex;align-items:center;gap:6px}
+.fold summary::-webkit-details-marker{display:none}
+.fold summary:after{content:'';margin-left:auto;width:9px;height:9px;border-right:2.5px solid #9db4c2;border-bottom:2.5px solid #9db4c2;transform:rotate(45deg);transition:transform .2s;flex:none}
+.fold[open] summary:after{transform:rotate(-135deg)}
+.fold summary .fs{color:#9db4c2;font-weight:700;font-size:12.5px;margin-left:4px}
+.fold summary .fs .ic{height:18px;vertical-align:-4px}
+.fold .fb{padding:0 10px 12px}
+.fold .invite{margin:0}
+/* Кнопки в поле — в один ряд, с подписями */
+#rowc{display:flex;gap:6px;align-items:flex-start}
+.rbw{display:flex;flex-direction:column;align-items:center;gap:2px;width:56px}
+.rbw.hidden{display:none}
+.rbw>span{font-size:10px;font-weight:800;color:#e8f2f7;text-shadow:0 1px 2px #000,0 0 4px #000;white-space:nowrap}
+#rowc .rb,#scanBtn{width:50px;height:50px}
+#rowc .rb .ic,#scanBtn .ic{height:26px}
+#menuBtn{width:46px;height:36px}
+#menuBtn img{height:28px}
+
+/* ===== Финал ===== */
+#finc{flex:none}
+#finBody h2{margin:0 0 4px;font-size:21px;line-height:1.15}
+.fhead{display:flex;gap:10px;align-items:center;margin:2px 0 10px}
+.fhead img{width:74px;height:74px;object-fit:contain;flex:none;filter:drop-shadow(0 4px 8px rgba(0,0,0,.5))}
+.fhead p{margin:0;font-size:13.5px;color:#cfe0ea;line-height:1.35}
+.frew{display:flex;gap:10px;align-items:center;background:linear-gradient(180deg,#2c2a14,#211f10);border:1px solid #8a7a2a;border-radius:14px;padding:9px 11px;margin-bottom:8px}
+.frew img{width:70px;height:56px;object-fit:contain;flex:none;filter:drop-shadow(0 3px 6px rgba(255,210,90,.35))}
+.frew b{display:block;color:#ffd84a;font-size:14.5px}
+.frew span{display:block;font-size:12px;color:#d9d2b0;line-height:1.3;margin-top:2px}
+.fstats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0 6px}
+.fstats div{background:var(--panel2);border-radius:12px;padding:7px 4px;text-align:center}
+.fstats b{display:block;font-size:18px;color:#fff}.fstats span{font-size:11px;color:#9db4c2}
+.ftitle{text-align:center;font-size:14px;margin:6px 0 4px;color:#cfe0ea}.ftitle b{color:#ffcf4a}
+.fsub{text-align:center;font-size:11.5px;color:#9db4c2;margin:4px 0 6px}
+.btn.sm2{font-size:13px;padding:10px 14px}
 </style>
 </head>
 <body>
@@ -301,11 +356,11 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
     <button id="baseBtn" class="rb hidden">⚙️ Улучшения на базе</button>
     <button id="siteBtn" class="rb hidden">🏗 Построить</button>
     <div id="rowc">
-      <button class="rb" id="c-can" aria-label="Канистра">⛽<small>0</small></button>
-      <button class="rb" id="c-rep" aria-label="Ремкомплект">🔧<small>0</small></button>
-      <button class="rb" id="c-cool" aria-label="Охлаждение">❄️<small>0</small></button>
+      <div class="rbw"><button class="rb" id="c-can" aria-label="Канистра">⛽<small>0</small></button><span>Топливо</span></div>
+      <div class="rbw"><button class="rb" id="c-rep" aria-label="Ремкомплект">🔧<small>0</small></button><span>Ремонт</span></div>
+      <div class="rbw"><button class="rb" id="c-cool" aria-label="Охлаждение">❄️<small>0</small></button><span>Охладить</span></div>
+      <div class="rbw"><button class="rb" id="scanBtn" aria-label="Сканер">📡<div class="cd"></div></button><span>Сканер</span></div>
     </div>
-    <button class="rb" id="scanBtn" aria-label="Сканер">📡<div class="cd"></div></button>
   </div>
 </div>
 
@@ -339,9 +394,9 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 <div id="dialog" class="hidden"><div class="dl"><img alt=""><div class="bub"><small></small><span></span><i class="tap">нажми, чтобы продолжить ›</i></div></div></div>
 <div id="finale" class="screen hidden" style="background:#0b1620"><canvas id="finc"></canvas><div class="body" id="finBody" style="padding:12px 14px calc(var(--sab) + 16px);overflow:auto;flex:1;touch-action:pan-y"></div></div>
 
-<script>window.GAME_V = 16;</script>
-<script src="config.js?v=16"></script>
+<script>window.GAME_V = 17;</script>
+<script src="config.js?v=17"></script>
 <script src="shop-links.js?v=12"></script>
-<script src="game.js?v=16"></script>
+<script src="game.js?v=17"></script>
 </body>
 </html>

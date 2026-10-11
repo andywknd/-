@@ -149,11 +149,12 @@ const tankMax = () => Math.round(upv('tank') * (S.shop && S.shop.tank_plus ? 1.3
 const hullMax = () => upv('hull');
 const cargoMax = () => upv('cargo');
 const consCap = () => 1 + (S.up.cargo >= 3 ? 1 : 0) + (S.up.cargo >= 5 ? 1 : 0);
-const drillCap = () => S.up.drill + 1 + (S.proto ? 2 : 0);
-const drillDps = () => upv('drill') * (S.proto ? 1.7 : 1) * (S.turboUntil > S.stats.playTime ? 2 : 1);
+const drillCap = () => S.up.drill + 1 + (S.proto ? 2 : 0) + (S.legend ? 1 : 0);
+const drillDps = () => upv('drill') * (S.proto ? 1.7 : 1) * (S.legend ? 1.3 : 1) * (S.turboUntil > S.stats.playTime ? 2 : 1);
 const fenceX = () => S.built >= NCH ? W : bx(S.built + 1) + 2;
 const isOpenBase = k => baseAt[k] >= 0 && baseAt[k] <= S.built;
-const pct = () => Math.round(S.built / NCH * 100);
+// Один процент везде: доля прокопанной длины тоннеля (учитывает длинные финальные участки)
+const pct = () => { if (S.built >= NCH) return 100; const L = bx(NCH) - bx(0), cur = clamp(1 - segGap / segLen(S.built), 0, 1) * segLen(S.built); return Math.min(99, Math.round((bx(S.built) - bx(0) + cur) / L * 100)); };
 // Постепенное раскрытие механик: сначала «просто копай», дальше — по главе за раз
 const F = {
   get simple() { return S.built < 1; },
@@ -588,7 +589,23 @@ function onLeaveBase() {
 }
 
 let baseSummary = null;
+// Бесконечный режим: после финала руда и алмазы появляются снова
+function respawnOres() {
+  let n = 0;
+  for (let tries = 0; tries < 900 && n < 45; tries++) {
+    let x = 3 + Math.floor(Math.random() * (W - 7)), y = SURF + 2 + Math.floor(Math.random() * (H - SURF - 4));
+    const r = Math.random(), t = r < .32 ? 1 : r < .6 ? 2 : r < .84 ? 3 : 4;
+    const len = 1 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < len; i++) {
+      if (!inb(x, y)) break; const k = idx(x, y);
+      if (grid[k] >= 1 && grid[k] <= 5 && !ore[k] && !rf[k] && baseAt[k] < 0) { ore[k] = t; n++; }
+      if (Math.random() < .5) x += Math.random() < .5 ? 1 : -1; else y += Math.random() < .5 ? 1 : -1;
+    }
+  }
+  return n;
+}
 function onArriveBase(b, evac, noOpen) {
+  if (S.built >= NCH && S.done && !evac) respawnOres();
   const first = S.visited.indexOf(b) < 0;
   if (first) { S.visited.push(b); if (b > 0) setTimeout(() => say('petrovich', C.JOKES.station), 600); }
   S.lastBase = b; atBase = b;
@@ -916,7 +933,7 @@ function drawMachine(ts, ox, oy) {
   const s = ts * 1.22;
   if (S.heat > 75) { cx.shadowColor = '#ff4a1a'; cx.shadowBlur = 14 + Math.sin(time * 12) * 6; }
   const lvSpr = S.up.drill > 1 && ok(IMG['drill_' + S.up.drill]) ? IMG['drill_' + S.up.drill] : IMG.drill;
-  const spr = S.shop.skin_gold ? (ok(IMG.drill_gold) ? IMG.drill_gold : goldSprite()) : lvSpr;
+  const spr = S.legend && ok(IMG.drill_legend) ? IMG.drill_legend : S.shop.skin_gold ? (ok(IMG.drill_gold) ? IMG.drill_gold : goldSprite()) : lvSpr;
   const sw0 = spr.naturalWidth || spr.width || 256, sh0 = spr.naturalHeight || spr.height || 190, dh = s * sh0 / sw0;
   // навесное оборудование: видно, что улучшено (растёт с уровнем)
   const att = (n, x, y, w, ax, ay) => { const im = IMG['att/' + n]; if (!ok(im)) return; const h = w * im.naturalHeight / im.naturalWidth; cx.drawImage(im, x - w * ax, y - h * ay, w, h); };
@@ -1020,7 +1037,7 @@ function setBar(id, val, max, txt, warn, crit) {
   const el = $(id); el.querySelector('b').textContent = txt; el.querySelector('.fill').style.width = clamp(val / max * 100, 0, 100) + '%';
   el.classList.toggle('warn', !!warn && !crit); el.classList.toggle('crit', !!crit);
 }
-let hudT = 0;
+let hudT = 0, hudCoins = -1;
 function hud(dt) {
   hudT -= dt; if (hudT > 0) return; hudT = .1;
   const need = fuelNeed();
@@ -1029,7 +1046,7 @@ function hud(dt) {
   setBar('b-heat', S.heat, 100, Math.round(S.heat) + '°', S.heat > 60, S.heat > 85);
   setBar('b-hull', S.hull, hullMax(), Math.max(0, Math.round(S.hull)) + '', S.hull < hullMax() * .4, S.hull < hullMax() * .2);
   setBar('b-cargo', S.cargo.length, cargoMax(), S.cargo.length + '/' + cargoMax(), S.cargo.length >= cargoMax() - 1, S.cargo.length >= cargoMax());
-  $('coins').textContent = '🪙 ' + Math.floor(S.coins);
+  const cvn = Math.floor(S.coins); if (cvn !== hudCoins) { hudCoins = cvn; $('coins').innerHTML = '<img class="ic" src="assets/i/coin.webp" alt=""> ' + cvn; }
   $('pct').textContent = pct() + '%';
   let w = '';
   if (leak) w = `🚰 Протечка! До помпы: ${Math.ceil(leak.t)} с`;
@@ -1043,8 +1060,8 @@ function hud(dt) {
   $('baseBtn').classList.toggle('hidden', !(atBase >= 0 && M.st === 'idle'));
 
   $('b-heat').classList.toggle('hidden', !F.heat); $('b-hull').classList.toggle('hidden', !F.hull);
-  $('scanBtn').classList.toggle('hidden', !F.scan);
-  ['can', 'rep', 'cool'].forEach(k => $('c-' + k).classList.toggle('hidden', !F.cons(k)));
+  $('scanBtn').parentElement.classList.toggle('hidden', !F.scan);
+  ['can', 'rep', 'cool'].forEach(k => $('c-' + k).parentElement.classList.toggle('hidden', !F.cons(k)));
   ['can', 'rep', 'cool'].forEach(k => { const b = $('c-' + k); b.querySelector('small').textContent = S.cons[k]; b.classList.toggle('dim', !S.cons[k]); });
   const cd = $('scanBtn').querySelector('.cd'); cd.style.setProperty('--p', (scanCD > 0 ? scanCD / 5 * 100 : 0) + '%');
   drawStrip();
@@ -1163,64 +1180,79 @@ const UP_ICON = { drill: '⛏', tank: '⛽', cargo: '📦', cooling: '❄️', s
 const ORE_ICON = { 1: '🪨', 2: '🟠', 3: '🟡', 4: '💎', 5: '💗', 6: '📦' };
 
 function routeBar() {
-  const segFrac = S.built < NCH ? clamp(1 - segGap / segLen(S.built), 0, 1) : 0;
-  const p = Math.round((S.built + segFrac) / NCH * 100);
+  const p = pct(), L = bx(NCH) - bx(0);
   let dots = '';
-  for (let i = 0; i <= NCH; i++) dots += `<i class="${i <= S.built ? 'on' : ''}" style="left:${i / NCH * 100}%"></i>`;
-  return `<div class="route"><div class="rl"><span>🏔 Чукотка</span><b>${p}%</b><span>Аляска 🏁</span></div>
+  for (let i = 0; i <= NCH; i++) dots += `<i class="${i <= S.built ? 'on' : ''}" style="left:${(bx(i) - bx(0)) / L * 100}%"></i>`;
+  return `<div class="route"><div class="rt">До Аляски пройдено <b>${p}%</b></div><div class="rl"><span>🏔 Чукотка</span><span>Аляска 🏁</span></div>
     <div class="rbar"><div class="rfill" style="width:${p}%"></div>${dots}<div class="rme" style="left:${p}%">🚜</div></div></div>`;
 }
 
+let baseAll = false; const baseFolds = {};
+// Рекомендованное улучшение: что мешает пройти дальше, иначе самое доступное по важности
+function recUpgrade(ups) {
+  const can = ups.filter(k => upCost(k) !== null); if (!can.length) return null;
+  if (S.built < NCH && C.corridorHard[S.built] > drillCap() && can.includes('drill')) return 'drill';
+  const pr = ['drill', 'tank', 'cooling', 'cargo', 'hull', 'drive', 'scanner'];
+  const aff = pr.filter(k => can.includes(k) && (S.refs.tokens || S.coins >= upCost(k)));
+  if (aff.length) return aff[0];
+  return can.slice().sort((a, b) => upCost(a) - upCost(b))[0];
+}
 function openBase() {
   if (atBase < 0) return;
   const b = atBase;
   updGap();
   const pips = n => '<span class="pips">' + [1, 2, 3, 4, 5].map(i => `<i class="${i <= n ? 'on' : ''}"></i>`).join('') + '</span>';
   let h = '';
-  // 1) Улучшения — первым блоком
-  const tk = S.refs.tokens;
-  h += `<div class="ups-h"><span>⚙️ Улучшения</span><b>${tk ? '🎟 ' + tk + ' · ' : ''}🪙 ${Math.floor(S.coins)}</b></div><div class="ups">` + Object.keys(C.UPGRADES).filter(k => F.up(k)).map(k => {
-    const u = C.UPGRADES[k], n = S.up[k], cost = upCost(k);
-    return `<div class="up lv${n}"><img class="uimg" src="${upImg(k, n)}" alt="" onerror="this.src='assets/up_${k}.webp'"><div class="un">${u.name} <small>ур. ${n}</small></div>${pips(n)}
-      <div class="uv">${cost !== null ? u.fmt(u.vals[n - 1]) + ' → <b>' + u.fmt(u.vals[n]) + '</b>' : 'максимум'}</div>
-      ${cost === null ? '<b class="ok">MAX ✔</b>' : tk ? `<button class="btn good" data-free="${k}">🎟 Бесплатно</button>` : `<button class="btn" data-up="${k}" ${S.coins < cost ? 'disabled' : ''}>${cost} 🪙</button>`}
-      <div class="uh">${u.desc}</div></div>`;
-  }).join('') + `</div>`;
-  // 2) Цель и кнопка «дальше»
-  if (S.built < NCH) {
-    const next = stationName(S.built + 1);
-    h += `<div class="goal"><div class="gt">🎯 Цель: докопаться до Аляски</div>${routeBar()}
-      <div class="gnext">До «${next}» — <b>${segGap} ${cellsWord(segGap)}</b> вправо ➡️</div>
-      <button class="btn good wide big" id="goBtn">Продолжить тоннель →</button>
-      <div class="bonus">💎 Руда и алмазы — бонус: сами меняются на 🪙 для улучшений</div></div>`;
-  } else h += `<div class="goal"><div class="gt">🏁 Континенты соединены!</div>${routeBar()}<button class="btn good wide big" id="goBtn">Копать дальше ради алмазов</button></div>`;
-  // 3) Итоги вылазки
-  const sm = baseSummary;
+  const tk = S.refs.tokens, sm = baseSummary;
+  // 1) Итог вылазки — одной строкой
   if (sm) {
-    const loot = Object.entries(sm.cnt).map(([t, n]) => `<span class="lt">${ORE_ICON[t]}<small>×${n}</small></span>`).join('');
-    if (!loot && !sm.extra.length) h += `<div class="sub" style="text-align:center;margin:0 0 8px">⛽🔧 ${sm.free ? 'заправка бесплатно' : '−' + sm.service + ' 🪙 за заправку'}</div>`;
-    else h += `<div class="trip"><div class="tt">Вылазка завершена</div><div class="loot">${loot}</div>
-      ${sm.gain ? `<div class="gain">🪙 +${sm.gain}</div>` : ''}
-      ${sm.extra.map(([i, n]) => `<div class="ex">${i} ${n} — в коллекцию!</div>`).join('')}
-      <div class="svc">⛽🔧 ${sm.free ? 'заправка бесплатно' : sm.service ? '−' + sm.service + ' 🪙' : 'бак полный'}</div></div>`;
+    const loot = Object.entries(sm.cnt).map(([t, n]) => `<span class="lt">${ORE_ICON[t]}×${n}</span>`).join(' · ');
+    if (loot || sm.gain) h += `<div class="bloot"><span class="bl">Добыча:</span> ${loot || '—'} ${sm.gain ? `<b>+${sm.gain} 🪙</b>` : ''}</div>`;
+    sm.extra.forEach(([i, n]) => { h += `<div class="bex">${i} ${n} — в коллекцию!</div>`; });
   }
-  if (refReady()) h += inviteBlock();
-  // 4) Расходники — крупные карточки
+  // 2) Маршрут и главный выбор
+  if (S.built < NCH) {
+    h += `<div class="goal">${routeBar()}
+      <div class="gnext">До следующей станции: <b>${segGap} ${cellsWord(segGap)}</b> вправо</div>
+      <button class="btn good wide big" id="goBtn">Продолжить тоннель →</button>
+      <div class="bonus">Руда и алмазы дают монеты для улучшений</div></div>`;
+  } else h += `<div class="goal">${routeBar()}<div class="gnext"><b>Бесконечный режим</b> — копай где хочешь, руда появляется снова</div><button class="btn good wide big" id="goBtn">Копать дальше →</button></div>`;
+  if (sm && !sm.free && sm.service > 0) h += `<div class="bsvc">Заправка и ремонт: −${sm.service} 🪙</div>`;
+  // 3) Улучшения: одно рекомендованное + «Все»
+  const ups = Object.keys(C.UPGRADES).filter(k => F.up(k));
+  const rec = recUpgrade(ups);
+  const upCard = (k, mini) => {
+    const u = C.UPGRADES[k], n = S.up[k], cost = upCost(k);
+    const btn = cost === null ? '<b class="ok">MAX ✔</b>' : tk ? `<button class="btn good" data-free="${k}">🎟 Бесплатно</button>` : `<button class="btn" data-up="${k}" ${S.coins < cost ? 'disabled' : ''}>${cost} 🪙</button>`;
+    if (mini) return `<div class="urec"><img src="${upImg(k, n)}" alt=""><div class="ut"><b>${u.name}</b> <small>ур. ${n} → ${n + 1}</small><span>${u.desc}</span></div>${btn}</div>`;
+    return `<div class="up lv${n}"><img class="uimg" src="${upImg(k, n)}" alt=""><div class="un">${u.name} <small>ур. ${n}</small></div>${pips(n)}
+      <div class="uv">${cost !== null ? u.fmt(u.vals[n - 1]) + ' → <b>' + u.fmt(u.vals[n]) + '</b>' : 'максимум'}</div>${btn}<div class="uh">${u.desc}</div></div>`;
+  };
+  h += `<div class="ups-h"><span>⚙️ Улучшения</span><span class="uhr"><b>${tk ? '🎟 ' + tk + ' · ' : ''}🪙 ${Math.floor(S.coins)}</b><button class="btn sec2 sm" id="allUpsBtn">${baseAll ? 'Свернуть' : 'Все'}</button></span></div>`;
+  if (baseAll) {
+    h += `<div class="ups">` + ups.map(k => upCard(k)).join('') + `</div>`;
+    if (S.built === 7) h += `<button class="btn ${S.proto ? 'sec2' : ''} wide" id="protoBtn">🚀 ${S.proto ? 'Снять прототип бура' : 'Поставить прототип бура (быстрее, но греется)'}</button>`;
+  } else if (rec) h += upCard(rec, true);
+  else h += `<div class="bsvc">Всё оборудование прокачано до максимума ✔</div>`;
+  // 4) Остальное — в раскрывающихся блоках
+  const fold = (id, title, inner) => `<details class="fold" data-fold="${id}" ${baseFolds[id] ? 'open' : ''}><summary>${title}</summary><div class="fb">${inner}</div></details>`;
   const cons = ['can', 'rep', 'cool'].filter(k => F.cons(k));
   const CONS_IC = { can: 'fuel', rep: 'repair', cool: 'coolant' };
-  if (cons.length) h += `<div class="ups-h"><span>🎒 Взять с собой в вылазку</span></div><div class="consc">` + cons.map(k => { const c = C.CONSUMABLES[k], full = S.cons[k] >= consCap();
+  if (cons.length) h += fold('cons', `🎒 С собой в вылазку <span class="fs">${cons.map(k => C.CONSUMABLES[k].icon + ' ' + S.cons[k]).join('  ')}</span>`, `<div class="consc">` + cons.map(k => { const c = C.CONSUMABLES[k], full = S.cons[k] >= consCap();
     return `<div class="cc"><img src="${icSrc(CONS_IC[k])}" alt=""><div class="cn">${c.name}</div><div class="cd">${c.desc}</div><div class="cq">в машине: <b>${S.cons[k]}/${consCap()}</b></div>
-      <button class="btn" data-cons="${k}" ${full || S.coins < c.price ? 'disabled' : ''}>${full ? 'Полно' : c.price + ' 🪙'}</button></div>`; }).join('') + `</div>`;
-  if (S.built === 7) h += `<button class="btn ${S.proto ? 'sec2' : ''} wide" id="protoBtn">🚀 ${S.proto ? 'Снять прототип бура' : 'Поставить прототип бура (быстрее, но греется)'}</button>`;
+      <button class="btn" data-cons="${k}" ${full || S.coins < c.price ? 'disabled' : ''}>${full ? 'Полно' : c.price + ' 🪙'}</button></div>`; }).join('') + `</div>`);
+  if (refReady()) h += fold('inv', `👥 Друзья — бесплатные улучшения <span class="fs">${Math.min(S.refs.n, 3)}/3</span>`, inviteBlock());
   const aq = F.quests ? activeQuests() : [];
-  if (aq.length) h += `<div class="ups-h"><span>📋 Задания</span></div>` + aq.map(q => `<div class="qrow">• ${q.text} <b>+${q.reward}🪙</b></div>`).join('');
-  if (S.built >= 1) h += `<div class="ups-h"><span>🚃 Переезд</span></div><div class="cons">` + Array.from({ length: S.built + 1 }, (_, i) => `<button class="btn sec2" data-tp="${i}" ${i === b ? 'disabled' : ''}>${i === 0 ? 'Чукотка' : i === NCH ? 'Аляска' : 'Ст. ' + i}</button>`).join('') + `</div>`;
+  if (aq.length) h += fold('q', `📋 Задания <span class="fs">${aq.length}</span>`, aq.map(q => `<div class="qrow">• ${q.text} <b>+${q.reward}🪙</b></div>`).join(''));
+  if (S.built >= 1) h += fold('tp', '🚃 Переезд по станциям', `<div class="cons">` + Array.from({ length: S.built + 1 }, (_, i) => `<button class="btn sec2" data-tp="${i}" ${i === b ? 'disabled' : ''}>${i === 0 ? 'Чукотка' : i === NCH ? 'Аляска' : 'Ст. ' + i}</button>`).join('') + `</div>`);
   if (F.shop) h += `<button class="btn sec2 wide" id="shopBtn">⭐ Лавка миллиардера</button>`;
-  openSheet('⚙️ Улучшения на базе «' + (b === 0 ? 'Чукотка' : b === NCH ? 'Аляска' : 'Станция ' + b) + '»', h);
+  openSheet(stationName(b), h);
+  $('sheetBody').querySelectorAll('details.fold').forEach(d => d.addEventListener('toggle', () => { baseFolds[d.dataset.fold] = d.open; }));
   baseSummary = null;
   const body = $('sheetBody');
   const on = (id, fn) => { const e = body.querySelector('#' + id); if (e) e.onclick = fn; };
-  on('goBtn', closeSheet);
+  on('goBtn', () => { baseAll = false; closeSheet(); });
+  on('allUpsBtn', () => { baseAll = !baseAll; openBase(); });
   on('shopBtn', () => openShop(true));
   on('protoBtn', () => { S.proto = !S.proto; if (S.proto) say('billionaire', C.CHAPTERS_DATA[7].joke, true); dirty = true; openBase(); });
   body.querySelectorAll('[data-cons]').forEach(e => e.onclick = () => { const k = e.dataset.cons, c = C.CONSUMABLES[k]; if (S.coins >= c.price && S.cons[k] < consCap()) { S.coins -= c.price; S.cons[k]++; SFX.coin(); dirty = true; openBase(); } });
@@ -1443,6 +1475,15 @@ function shareText() {
     ` Алмазов найдено: ${S.stats.diamonds}. От основной задачи отвлекался: ${distractWord()}. Звание: «${titleFor()}».`;
 }
 function cardUrl() { return location.origin + location.pathname.replace(/[^/]*$/, '') + 'assets/promo.jpg'; }
+function shareChat(via) {
+  track('share_card', { via });
+  const can = inTG && tg.isVersionAtLeast && tg.isVersionAtLeast('6.7');
+  const uid = inTG && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 0;
+  const q = `r ${pct()} ${S.stats.diamonds} ${S.stats.accidents} ${Object.keys(TITLES).indexOf(titleFor())} ${['почти никогда', 'иногда', 'постоянно'].indexOf(distractWord())} ${uid}`;
+  if (can) { try { tg.switchInlineQuery(q, ['users', 'groups', 'channels']); return; } catch (e) {} }
+  if (navigator.share) navigator.share({ title: 'Докопаться до Америки', text: shareText(), url: APP_LINK }).catch(() => {});
+  else copy(shareText() + ' ' + APP_LINK);
+}
 function openShare() {
   const can = inTG && tg.isVersionAtLeast && tg.isVersionAtLeast('6.7');
   const story = inTG && tg.shareToStory && tg.isVersionAtLeast('7.8');
@@ -1451,14 +1492,7 @@ function openShare() {
     ${story ? '<button class="btn sec2 wide" id="sh-story">📲 В сторис</button>' : ''}
     <button class="btn sec2 wide" id="sh-copy">🔗 Скопировать ссылку</button>
     <p style="font-size:12px;color:#9db4c2">Карточку отправляешь только ты сам — игра никому не пишет за тебя.</p>`);
-  $('sh-chat').onclick = () => {
-    track('share_card', { via: 'chat' });
-    const uid = inTG && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : 0;
-    const q = `r ${pct()} ${S.stats.diamonds} ${S.stats.accidents} ${Object.keys(TITLES).indexOf(titleFor())} ${['почти никогда', 'иногда', 'постоянно'].indexOf(distractWord())} ${uid}`;
-    if (can) { try { tg.switchInlineQuery(q, ['users', 'groups', 'channels']); return; } catch (e) {} }
-    if (navigator.share) navigator.share({ title: 'Докопаться до Америки', text: shareText(), url: APP_LINK }).catch(() => {});
-    else copy(shareText() + ' ' + APP_LINK);
-  };
+  $('sh-chat').onclick = () => shareChat('chat');
   if (story) $('sh-story').onclick = () => { track('share_card', { via: 'story' }); try { tg.shareToStory(cardUrl(), { text: shareText().slice(0, 190) + ' ' + APP_LINK }); } catch (e) { toast('Сторис недоступны'); } };
   $('sh-copy').onclick = () => copy(shareText() + ' ' + APP_LINK);
 }
@@ -1467,42 +1501,69 @@ function copy(t) { try { navigator.clipboard.writeText(t).then(() => toast('Ск
 
 // ---------- Финал ----------
 function finale() {
-  achieve('dug'); S.done = true; S.stats.finishedAt = Date.now(); S.completions++; track('finale', { t: Math.round(S.stats.playTime) });
+  achieve('dug'); S.done = true; S.legend = true; S.stats.finishedAt = Date.now(); S.completions++; track('finale', { t: Math.round(S.stats.playTime) });
   save(true);
-  dialog([['bob', 'Слышу! Слышу ваш бур! Стоп… мы в футах, вы в метрах… совпало?!'], ['petrovich', 'Совпало. С точностью до сметы.'], ['alya', 'Стык укреплён. Запускаем поезд!']], () => {
+  dialog([['bob', 'Слышу! Слышу ваш бур! Стоп… мы в футах, вы в метрах… совпало?!'], ['petrovich', 'Совпало. С точностью до сметы.'], ['alya', 'Стык укреплён. Запускаем движение!']], () => {
     $('hud').classList.add('hidden'); $('controls').classList.add('hidden');
-    const f = $('finale'); f.classList.remove('hidden'); paused = true; finT = 0;
+    const f = $('finale'); f.classList.remove('hidden'); paused = true; finT = 0; finCars = []; finFx = [];
     const mins = Math.round(S.stats.playTime / 60);
-    $('finBody').innerHTML = `<h2 style="margin:4px 0 6px;font-size:24px">🚇 Континенты соединены!</h2>
-      <p style="color:#d7e6ee;margin:0 0 10px">${C.JOKES.finish}</p>
-      <div class="sec"><div class="row"><span class="grow">Время в игре</span><b>${mins} мин</b></div>
-      <div class="row"><span class="grow">Доставлено находок</span><b>${S.stats.delivered}</b></div>
-      <div class="row"><span class="grow">Алмазов</span><b>${S.stats.diamonds}</b></div>
-      <div class="row"><span class="grow">Аварий</span><b>${S.stats.accidents}</b></div>
-      <div class="row"><span class="grow">Звание</span><b style="color:#ffcf4a">${titleFor()}</b></div></div>
-      <button class="btn wide" id="fin-share">📣 Похвастаться</button>
-      <button class="btn sec2 wide" id="fin-cont">Продолжить копать ради алмазов</button>
-      <button class="btn sec2 wide" id="fin-new">Новая кампания</button>`;
-    $('fin-share').onclick = () => { f.classList.add('hidden'); showGame(); openShare(); };
-    $('fin-cont').onclick = () => { f.classList.add('hidden'); showGame(); paused = false; };
+    $('finBody').innerHTML = `<div class="fhead"><img src="assets/fin/medal.webp" alt=""><div><h2>Тоннель до Америки проложен!</h2><p>Чукотка и Аляска соединены. По тоннелю уже поехали первые машины.</p></div></div>
+      <div class="frew"><img src="assets/drill_legend.webp" alt=""><div><b>Эксклюзив: легендарный бур</b><span>Радужный алмазный бур — только у тех, кто дошёл до конца. Копает мощнее любого другого.</span></div></div>
+      <div class="frew"><img src="assets/fin/infinity.webp" alt=""><div><b>Бесконечный режим открыт</b><span>Без уровней и стен: копай где хочешь — руда и алмазы появляются снова после каждого возвращения на базу.</span></div></div>
+      <div class="fstats"><div><b>${mins}</b><span>минут</span></div><div><b>${S.stats.diamonds}</b><span>алмазов</span></div><div><b>${S.stats.delivered}</b><span>находок</span></div><div><b>${S.stats.accidents}</b><span>аварий</span></div></div>
+      <div class="ftitle">Звание: <b>${titleFor()}</b></div>
+      <button class="btn good wide big" id="fin-share">📣 Рассказать друзьям</button>
+      <div class="fsub">Покажи, что ты докопался до Америки — пусть попробуют повторить</div>
+      <button class="btn wide" id="fin-cont"><img class="bi" src="assets/fin/infinity.webp" alt="">Копать бесконечно</button>
+      <button class="btn sec2 wide sm2" id="fin-new">Начать новую кампанию</button>`;
+    $('fin-share').onclick = () => shareChat('finale');
+    $('fin-cont').onclick = () => { f.classList.add('hidden'); showGame(); paused = false; toast('<img class="ic" src="assets/fin/infinity.webp"> Бесконечный режим: копай где хочешь!'); };
     $('fin-new').onclick = () => newCampaign();
   });
 }
-let finT = 0;
+let finT = 0, finCars = [], finFx = [];
+const FIN_CARS = ['truck', 'bus', 'car', 'loco', 'car', 'truck'];
+['finale_bg', 'drill_legend', 'fin/truck', 'fin/bus', 'fin/car', 'fin/loco', 'fin/firework'].forEach(n => { if (!IMG[n]) { const i = new Image(); i.src = 'assets/' + n + '.webp'; IMG[n] = i; } });
 function renderFinale(dt) {
-  finT += dt; const c = $('finc'); const w = c.clientWidth, h = c.clientHeight; if (c.width !== w * DPR) { c.width = w * DPR; c.height = h * DPR; }
+  finT += dt; const c = $('finc'); const w = c.clientWidth; if (!w) return;
+  const h = Math.round(Math.min(w * .78, window.innerHeight * .42)); if (c.style.height !== h + 'px') c.style.height = h + 'px';
+  if (c.width !== Math.round(w * DPR) || c.height !== Math.round(h * DPR)) { c.width = Math.round(w * DPR); c.height = Math.round(h * DPR); }
   const g = c.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0);
-  const sky = g.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#5fa8e8'); sky.addColorStop(.3, '#a8d4f0'); sky.addColorStop(.32, '#1d6a80'); sky.addColorStop(.55, '#0e4659'); sky.addColorStop(.56, '#6b4a30'); sky.addColorStop(1, '#2a1c12');
-  g.fillStyle = sky; g.fillRect(0, 0, w, h);
-  g.fillStyle = '#e8f2f7'; g.beginPath(); g.moveTo(0, h * .35); g.quadraticCurveTo(w * .12, h * .12, w * .22, h * .33); g.lineTo(0, h * .4); g.fill();
-  g.beginPath(); g.moveTo(w, h * .35); g.quadraticCurveTo(w * .88, h * .1, w * .78, h * .33); g.lineTo(w, h * .4); g.fill();
-  const ty = h * .74;
-  g.fillStyle = '#4b525c'; g.fillRect(0, ty - h * .1, w, h * .14); g.fillStyle = '#b8c0c8'; g.fillRect(0, ty + h * .02, w, 3);
-  for (let x = 20; x < w; x += 46) { const gg = g.createRadialGradient(x, ty - h * .08, 0, x, ty - h * .08, 30); gg.addColorStop(0, 'rgba(255,190,90,.6)'); gg.addColorStop(1, 'rgba(255,190,90,0)'); g.fillStyle = gg; g.fillRect(x - 30, ty - h * .08 - 30, 60, 60); }
-  const tw = Math.min(w * .5, 260), trx = -tw + ((finT * 90) % (w + tw * 2));
-  if (ok(IMG.train)) { const th = tw * IMG.train.naturalHeight / IMG.train.naturalWidth; g.drawImage(IMG.train, trx, ty + 8 - th, tw, th); } else { g.fillStyle = '#2bb3a0'; g.fillRect(trx, ty - 40, tw, 40); }
-  g.font = 'bold 13px sans-serif'; g.fillStyle = '#fff'; g.textAlign = 'left'; g.fillText('ЧУКОТКА', 8, h * .45); g.textAlign = 'right'; g.fillText('АЛЯСКА', w - 8, h * .45);
-  for (let i = 0; i < 40; i++) { const x = (i * 97 + finT * 30 * (1 + i % 3)) % w, y = ((i * 53 + finT * 60 * (1 + i % 2)) % (h * .6)); g.fillStyle = ['#ffcf4a', '#ff6b9a', '#6fd8ff', '#7dff6a'][i % 4]; g.fillRect(x, y, 5, 8); }
+  const bg = IMG.finale_bg;
+  const bw = Math.max(w, h * 16 / 9), bx0 = (w - bw) / 2;
+  if (ok(bg)) g.drawImage(bg, bx0, 0, bw, h); else { g.fillStyle = '#16324a'; g.fillRect(0, 0, w, h); }
+  // Тоннель: ряд 0.62–0.72 высоты. Сначала его «прокладывает» бур слева направо
+  const tTop = h * .615, tBot = h * .715, floor = h * .703, dig = 2.6;
+  const rev = Math.min(1, finT / dig), rx = w * .03 + rev * w * .94;
+  if (rev < 1) {
+    g.fillStyle = '#3b2a1e'; g.fillRect(rx, tTop, w - rx, tBot - tTop);
+    g.fillStyle = 'rgba(0,0,0,.25)'; for (let x = rx; x < w; x += 14) g.fillRect(x, tTop + ((x * 7) % 9), 6, 3);
+    const d = IMG.drill_legend, dw = h * .2;
+    if (ok(d)) { const dh = dw * d.naturalHeight / d.naturalWidth; g.drawImage(d, rx - dw * .75, floor - dh + 2 + Math.sin(finT * 40) * 1, dw, dh); }
+    for (let i = 0; i < 3; i++) finFx.push({ x: rx + 2, y: tTop + Math.random() * (tBot - tTop), vx: rnd(10, 80), vy: rnd(-60, 20), life: .5, c: ['#ffd27a', '#fff', '#c9a27a'][i] });
+  } else {
+    // машины едут по готовому тоннелю в обе стороны
+    if (!finCars.length || finCars[finCars.length - 1].t > rnd(.9, 1.6)) {
+      const dir = finCars.length % 3 === 2 ? -1 : 1, kind = FIN_CARS[(finCars.length * 5) % FIN_CARS.length];
+      finCars.push({ kind, dir, x: dir > 0 ? -60 : w + 60, sp: rnd(70, 110) * (kind === 'loco' ? 1.3 : 1) * w / 390, t: 0 });
+    }
+    for (const car of finCars) {
+      car.t += dt; car.x += car.dir * car.sp * dt;
+      const im = IMG['fin/' + car.kind]; if (!ok(im)) continue;
+      const ch = (tBot - tTop) * (car.kind === 'car' ? .62 : .82), cw = ch * im.naturalWidth / im.naturalHeight;
+      g.save(); g.translate(car.x, floor - ch); if (car.dir < 0) { g.scale(-1, 1); g.translate(-cw, 0); }
+      g.drawImage(im, 0, Math.sin(car.t * 18) * .6, cw, ch); g.restore();
+    }
+    finCars = finCars.filter(cr => cr.x > -200 && cr.x < w + 200);
+    // салют
+    if (Math.random() < dt * 1.6) finFx.push({ fw: 1, x: rnd(w * .15, w * .85), y: rnd(h * .05, h * .28), life: 1.1, s: rnd(.12, .2) * h });
+  }
+  for (const p of finFx) {
+    p.life -= dt;
+    if (p.fw) { const im = IMG['fin/firework']; if (!ok(im)) continue; const k = 1.1 - p.life, sz = p.s * Math.min(1, k * 3); g.globalAlpha = Math.max(0, Math.min(1, p.life * 2)); g.drawImage(im, p.x - sz / 2, p.y - sz / 2, sz, sz); g.globalAlpha = 1; }
+    else { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 200 * dt; g.fillStyle = p.c; g.globalAlpha = Math.max(0, p.life * 2); g.fillRect(p.x, p.y, 3, 3); g.globalAlpha = 1; }
+  }
+  finFx = finFx.filter(p => p.life > 0);
 }
 
 // ---------- Экраны ----------
@@ -1593,6 +1654,6 @@ function boot() {
   });
 }
 boot();
-window.__dig = { get S() { return S; }, M, banner, flood, bx, get W() { return W; }, segPath, teleport, buildSegment, fenceX, openBase, showDrillOffer,
+window.__dig = { get S() { return S; }, M, banner, flood, onArriveBase, respawnOres, bx, get W() { return W; }, segPath, teleport, buildSegment, fenceX, openBase, showDrillOffer,
   digRow: (x0, x1, y) => { for (let x = x0; x <= x1; x++) { const k = idx(x, y); if (grid[k] < 6) { grid[k] = 0; dug[k] = 1; exp[k] = 1; } } computeDist(); }, bx, finale };
 })();
