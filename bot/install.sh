@@ -38,14 +38,14 @@ echo "==> 4/6 Настройки и токен"
 ENV="$DIR/bot/.env"
 if [ ! -f "$ENV" ] && [ -f /opt/digtunnel-env ]; then cp /opt/digtunnel-env "$ENV"; fi
 if [ "${1:-}" = "--token" ] && [ -f "$ENV" ]; then
-  read -r -p "Вставь НОВЫЙ токен бота из BotFather и нажми Enter: " TOKEN </dev/tty
+  read -rs -p "Вставь НОВЫЙ токен бота из BotFather (символы не видны) и нажми Enter: " TOKEN </dev/tty; echo
   TOKEN="$(echo "$TOKEN" | tr -d '[:space:]')"
   sed -i "s|^BOT_TOKEN=.*|BOT_TOKEN=$TOKEN|" "$ENV"
   echo "    токен заменён"
 fi
 if [ ! -f "$ENV" ]; then
   echo
-  read -r -p "Вставь токен бота @digtunnelbot из BotFather и нажми Enter: " TOKEN </dev/tty
+  read -rs -p "Вставь токен бота @digtunnelbot (символы не видны) и нажми Enter: " TOKEN </dev/tty; echo
   TOKEN="$(echo "$TOKEN" | tr -d '[:space:]')"
   cat > "$ENV" <<EOF
 BOT_TOKEN=$TOKEN
@@ -60,7 +60,7 @@ echo "==> 5/6 HTTPS-адрес для статистики"
 IP="$(curl -4 -fsS --max-time 8 https://api.ipify.org || curl -4 -fsS --max-time 8 https://ifconfig.me || true)"
 API_URL=""
 if [ -n "$IP" ]; then
-  HOST="${IP//./-}.sslip.io"
+  HOST="dig.${IP//./-}.sslip.io"   # отдельный поддомен, чтобы не пересекаться со Штампиком
   PORT80="$(ss -ltnp '( sport = :80 )' 2>/dev/null | tail -n +2 || true)"
   if echo "$PORT80" | grep -q caddy; then
     # На сервере уже работает Caddy (например, для Штампика) — добавляем свой адрес в его конфиг
