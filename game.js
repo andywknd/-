@@ -590,6 +590,7 @@ function teleport(b) { M.x = bx(b); M.y = CB; M.rx = M.x; M.ry = M.y; M.st = 'id
 
 function arrive() {
   S.x = M.x; S.y = M.y;
+  if (S.built < NCH && baseAt[idx(M.x, M.y)] === S.built + 1) try { updGap(); } catch (e) {}   // доехал до следующей станции — проверить достройку
   reveal(M.x, M.y, 3);
   trail.push([M.x, M.y]); if (trail.length > 40) trail.shift();
   if (M.y > S.stats.maxDepth) S.stats.maxDepth = M.y;
@@ -1327,7 +1328,7 @@ $('baseBtn').addEventListener('click', () => openBase());
 
 // Путь от текущей станции к следующей: любой прокопанный ход (не обязательно по коридору)
 let segGap = SEG;
-function segPath() {
+function segPath(loose) {
   const i = S.built; if (i >= NCH) return null;
   const xa = bx(i) - 1, xb = bx(i + 1) + 1;
   const prev = new Int32Array(N).fill(-2); const q = [];
@@ -1338,9 +1339,11 @@ function segPath() {
     if (baseAt[k] === i + 1) { found = k; break; }
     for (const [a, b] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
       if (a < xa || a > xb || b < SURF || b >= H) continue; const j = idx(a, b);
-      if (grid[j] === 0 && prev[j] === -2) { prev[j] = k; q.push(j); }
+      if ((grid[j] === 0 || loose && (grid[j] === 8 || grid[j] === 9)) && prev[j] === -2) { prev[j] = k; q.push(j); }
     }
   }
+  // игрок уже доехал до следующей станции, а путь перекрыт завалом позади — считаем тоннель готовым (завал расчистим)
+  if (found < 0 && !loose && baseAt[idx(M.x, M.y)] === i + 1) return segPath(true);
   const path = []; if (found >= 0) { let k = found; while (k >= 0) { path.push(k); k = prev[k]; } }
   return { connected: found >= 0, path, gap: found >= 0 ? 0 : Math.max(1, bx(i + 1) - 1 - maxX) };
 }
@@ -1497,7 +1500,7 @@ function buildSegment() {
   const p = segPath(); if (!p || !p.connected) return;
   const reward = Math.round(C.segReq(S.built).reward * segLen(S.built) / SEG);
   S.coins += reward;
-  for (const k of p.path) rf[k] = 1;
+  for (const k of p.path) { rf[k] = 1; if (grid[k] === 8 || grid[k] === 9) { grid[k] = 0; dug[k] = 1; const fi = S.fill.indexOf(k); if (fi >= 0) S.fill.splice(fi, 1); } }
   for (let y = CT; y <= CB; y++) for (let x = bx(S.built) - 1; x <= bx(S.built) + 1; x++) rf[idx(x, y)] = 1;
   const segN = S.built; S.built++;
   segRank(segN);
@@ -1966,7 +1969,7 @@ function boot() {
   }
   resize();
   loadAll(saved => {
-    if (saved && saved.v === 1) { S = Object.assign(defaultState(), saved); if (!saved.wv) delete S.wv; if (saved.segT0 === undefined) S.segT0 = S.stats.playTime; S.drops = (S.drops || []).filter(d => d.t >= 4); applyStateToMap(); M.x = S.x; M.y = S.y; M.rx = M.x; M.ry = M.y; const k = idx(M.x, M.y); atBase = isOpenBase(k) ? baseAt[k] : -1; if (atBase < 0) run = { fuel0: S.fuel, maxHeat: 0, away: 0 }; }
+    if (saved && saved.v === 1) { S = Object.assign(defaultState(), saved); if (!saved.wv) delete S.wv; if (saved.segT0 === undefined) S.segT0 = S.stats.playTime; S.drops = (S.drops || []).filter(d => d.t >= 4); applyStateToMap(); M.x = S.x; M.y = S.y; M.rx = M.x; M.ry = M.y; const k = idx(M.x, M.y); atBase = isOpenBase(k) ? baseAt[k] : -1; if (atBase < 0) run = { fuel0: S.fuel, maxHeat: 0, away: 0 }; try { updGap(); } catch (e) {} }
     else { S = defaultState(); setGeo(GEO_CUR); generate(S.seed); computeDist(); teleport(0); }
     reveal(M.x, M.y, 3);
     camX = M.x * TS - VW / 2; camY = M.y * TS - VH / 2;
@@ -1975,6 +1978,6 @@ function boot() {
   });
 }
 boot();
-window.__dig = { get S() { return S; }, M, trPieces, trCheck, banner, flood, onArriveBase, respawnOres, bx, get W() { return W; }, segPath, teleport, buildSegment, fenceX, openBase, showDrillOffer,
+window.__dig = { get S() { return S; }, M, setCell: (x, y, v) => { grid[idx(x, y)] = v; }, trPieces, trCheck, banner, flood, onArriveBase, respawnOres, bx, get W() { return W; }, segPath, teleport, buildSegment, fenceX, openBase, showDrillOffer,
   digRow: (x0, x1, y) => { for (let x = x0; x <= x1; x++) { const k = idx(x, y); if (grid[k] < 6) { grid[k] = 0; dug[k] = 1; exp[k] = 1; } } computeDist(); }, bx, finale };
 })();
