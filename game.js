@@ -532,7 +532,7 @@ function onArriveBase(b, evac, noOpen) {
   }
   baseSummary = (items.length || service || extra.length) ? { cnt, gain, service, free, extra } : null;
   run = null;
-  if (!S.tut.returned) { S.tut.returned = true; track('tutorial_done'); setTimeout(() => say('alya', 'Добыча сама превратилась в монеты 🪙. Купи улучшение — и копай дальше вправо, к Аляске!', true), 300); }
+  if (!S.tut.returned) { S.tut.returned = true; track('tutorial_done'); setTimeout(askWrite, 6000); setTimeout(() => say('alya', 'Добыча сама превратилась в монеты 🪙. Купи улучшение — и копай дальше вправо, к Аляске!', true), 300); }
   S.heat = 0;
   dirty = true; save(true);
   if (noOpen) { if (gain) toast('🪙 +' + gain); return; }
@@ -1161,7 +1161,6 @@ function buildSegment() {
   const here = baseAt[idx(M.x, M.y)];
   if (here === S.built && S.built < NCH) { atBase = -1; onArriveBase(S.built, false, true); }
   if (S.built >= NCH) { finale(); return; }
-  if (S.built === 1) setTimeout(askWrite, 9000);
   banner('🎉 ' + stationName(S.built).toUpperCase() + ' ОТКРЫТА · +' + reward + ' 🪙', 'Тоннель: ' + pct() + '%');
   setTimeout(() => chapterIntro(), 2800);
 }
@@ -1170,7 +1169,7 @@ function askWrite() {
   if (!inTG || S.askedWrite || !tg.requestWriteAccess || !tg.isVersionAtLeast('6.9')) return;
   if (tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.allows_write_to_pm) return;
   S.askedWrite = true; dirty = true;
-  try { tg.requestWriteAccess(ok => { track('write_access', { ok: !!ok }); if (ok) toast('🔔 Будем сообщать о новых участках и событиях'); }); } catch (e) {}
+  try { tg.requestWriteAccess(ok => { track('write_access', { ok: !!ok }); if (ok) toast('🔔 Пришлём, когда появятся новые уровни и призы'); }); } catch (e) {}
 }
 
 function chapterIntro() {

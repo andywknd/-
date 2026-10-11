@@ -297,6 +297,11 @@ def invite_url(uid: int) -> str:
     return f"https://t.me/share/url?url={quote(link, safe='')}&text={quote(text, safe='')}"
 
 
+def start_kb(ref: str = "ch") -> InlineKeyboardMarkup:
+    """Кнопка под постом в канале: ведёт в бота через START — так человек попадает в базу рассылки."""
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⛏ Играть", url=f"https://t.me/{BOT_USERNAME}?start={ref}")]])
+
+
 def play_kb_private() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⛏ Копать до Америки", web_app=WebAppInfo(url=GAME_URL))]])
 
@@ -656,7 +661,7 @@ async def post(m: Message, command: CommandObject):
         await m.answer("Использование: /post @канал\nСначала добавь бота администратором канала с правом публикации.")
         return
     try:
-        await bot.send_photo(target, promo_photo(), caption=POST_TEXT, parse_mode="HTML", reply_markup=play_kb_link("ch"))
+        await bot.send_photo(target, promo_photo(), caption=POST_TEXT, parse_mode="HTML", reply_markup=start_kb("ch"))
         await m.answer("✅ Опубликовано в " + target)
     except Exception as e:
         await m.answer(f"❌ Не получилось: {e}\nПроверь, что бот — админ канала с правом публикации.")
@@ -664,7 +669,7 @@ async def post(m: Message, command: CommandObject):
 
 @dp.message(Command("preview"), is_admin)
 async def preview(m: Message):
-    await m.answer_photo(promo_photo(), caption=POST_TEXT, parse_mode="HTML", reply_markup=play_kb_link("ch"))
+    await m.answer_photo(promo_photo(), caption=POST_TEXT, parse_mode="HTML", reply_markup=start_kb("ch"))
 
 
 @dp.message(Command("admin"), is_admin)
