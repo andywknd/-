@@ -373,9 +373,10 @@ const light = document.createElement('canvas'), lx = light.getContext('2d');
 let VW = 0, VH = 0, DPR = 1, TS = 40, tiles = {};
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
-  VW = window.innerWidth; VH = window.innerHeight;
+  // на Android при старте размеры окна бывают нулевыми — берём запасные и не даём холстам стать 0×0
+  VW = window.innerWidth || document.documentElement.clientWidth || 0; VH = window.innerHeight || document.documentElement.clientHeight || 0;
   cv.width = VW * DPR; cv.height = VH * DPR;
-  light.width = Math.ceil(VW / 2); light.height = Math.ceil(VH / 2);
+  light.width = Math.max(1, Math.ceil(VW / 2)); light.height = Math.max(1, Math.ceil(VH / 2));
   TS = Math.round(Math.max(30, Math.min(VW / 9.2, VH / 14)));
   buildTiles();
 }
@@ -1154,7 +1155,7 @@ function drawLight(ts, ox, oy) {
   const x0 = Math.max(0, Math.floor(ox / ts)), x1 = Math.min(W - 1, Math.ceil((ox + VW) / ts));
   for (let x = x0 - (x0 % 3); x <= x1; x += 3) for (let y = CT; y <= CB; y++) if (rf[idx(x, y)]) hole(x + .5, y + .4, 2.2, .85);
   if (leak) hole(leak.px + .5, leak.py + .5, 1.6, .9);
-  cx.drawImage(light, 0, Math.max(0, 0), VW, VH);
+  if (light.width > 1 && light.height > 1) cx.drawImage(light, 0, 0, VW, VH);
   if (groundTop > 0) {}
   // тёплое свечение ламп
   cx.globalCompositeOperation = 'lighter';
@@ -1915,7 +1916,9 @@ function newCampaign() {
 // ---------- Цикл ----------
 function loop(now) {
   const dt = Math.min(.05, (now - lastT) / 1000); lastT = now; time += dt;
-  if (S) {
+  const iw = window.innerWidth || 0, ih = window.innerHeight || 0;
+  if (iw > 1 && ih > 1 && (iw !== VW || ih !== VH)) resize();
+  if (S && VW > 1 && VH > 1) {
     if (!$('finale').classList.contains('hidden')) renderFinale(dt);
     else {
       if (!paused) update(dt);
