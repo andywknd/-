@@ -533,7 +533,7 @@ function evacuate(cause) {
       teleport(S.lastBase);
       S.fuel = Math.max(S.fuel, tankMax() * .5); S.hull = Math.max(S.hull, hullMax() * .5); S.heat = 0;
       dirty = true; save(true); paused = false;
-      setTimeout(() => say('petrovich', ['Ничего, бывает. Главное — каска цела.', 'Зато проверили систему эвакуации. Работает!', 'Машину вытащили. Гордость — пока нет.'][S.stats.accidents % 3], true), 400);
+      setTimeout(() => say('petrovich', ['Ничего, бывает. Главное — каска цела.', 'Зато проверили систему эвакуации. Работает!', 'Машину вытащили. Гордость — пока нет.'][S.stats.accidents % 3], true), 400); catSay('evac');
       onArriveBase(S.lastBase, true);
     } }]);
 }
@@ -553,7 +553,7 @@ function flood() {
         leak = null; collapses = []; teleport(S.lastBase);
         S.fuel = Math.max(S.fuel, tankMax() * .5); S.hull = Math.max(S.hull, hullMax() * .5); S.heat = 0;
         dirty = true; save(true); paused = false;
-        setTimeout(() => say('petrovich', 'Вода — штука мокрая. Под дном копаем, а не сквозь него!', true), 400);
+        setTimeout(() => say('petrovich', 'Вода — штука мокрая. Под дном копаем, а не сквозь него!', true), 400); catSay('flood');
         onArriveBase(S.lastBase, true);
       } }]);
   }, 1500);
@@ -615,7 +615,7 @@ function onArriveBase(b, evac, noOpen) {
     cnt[it.t] = (cnt[it.t] || 0) + 1;
     if (it.t <= 5) gain += C.ORES[it.t].price;
     if (it.t >= 4) gems = true;
-    if (it.t === 4) { S.stats.diamonds++; questDone('diamond'); if (S.stats.diamonds >= 10) achieve('distract'); track('diamond_delivered'); }
+    if (it.t === 4) { if (S.stats.diamonds % 3 === 0) catSay('diamond'); S.stats.diamonds++; questDone('diamond'); if (S.stats.diamonds >= 10) achieve('distract'); track('diamond_delivered'); }
     if (it.t === 5 && S.coll.colored.indexOf(it.id) < 0) { S.coll.colored.push(it.id); gain += 100; extra.push(['💗', C.COLORED[it.id].name]); }
     if (it.t === 6 && S.coll.art.indexOf(it.id) < 0) { S.coll.art.push(it.id); gain += 150; extra.push(['📦', C.ARTIFACTS[it.id].name]); if (it.id === 1) questDone('blueprint'); }
   }
@@ -661,7 +661,35 @@ function achieve(id) {
   if (S.ach.indexOf(id) >= 0) return; S.ach.push(id); toast('🏆 ' + C.ACH[id].name); SFX.gem(); dirty = true;
 }
 
-const CAT_LINES = ['Мяу. (Перевод: «где моя миска?».)', 'Мур. Я проверил грунт — тёплый, можно спать.', 'Мяу! Там алмаз. Или мышь. Копай, разберёмся.', 'Кот-прораб одобряет этот тоннель. Подпись: лапа.', 'Мяу. Корм прислали в фунтах. Пересчитываю в граммы.'];
+const CAT_LINES = [
+  'Мяу. (Перевод: «где моя миска?».)',
+  'Мур. Проверил грунт — тёплый. Объявляю перерыв на сон.',
+  'Мяу! Там алмаз. Или мышь. Копай, разберёмся.',
+  'Кот-прораб одобряет этот тоннель. Подпись: лапа.',
+  'Я не сплю. Я провожу инспекцию с закрытыми глазами.',
+  'Если бур такой умный, пусть сам ловит мышей.',
+  'Мяу. Требую отдельный тоннель до миски. Короткий.',
+  'Сидеть на тёплом моторе — это тоже работа. Очень ответственная.',
+  'Опять копаем? А можно хотя бы копать в сторону холодильника?',
+  'Мур-р. Этот звук — не мотор. Это я доволен.',
+  'Мяу! Я уронил гаечный ключ в тоннель. Специально. Проверял глубину.',
+  'По моим расчётам до Аляски ещё три миски и один сон.',
+  'Ваш бур рычит. Я тоже умею. Но я делаю это красиво.',
+  'Пыль в усах — признак настоящего профессионала.',
+  'Мяу. Нашёл камень. Лизнул. Не алмаз.',
+  'Мне сказали «каска обязательна». Я в коробке — это считается.',
+  'Если что — я не испугался. Я просто резко ушёл под сиденье.',
+  'Я лежу на кнопке «Стоп». Совпадение? Не думаю.',
+  'Мур. Предлагаю назвать тоннель «Котопровод». Голосование окончено: я за.',
+  'Мяу! В Аляске, говорят, рыба размером с меня. Копай быстрее!',
+];
+const CAT_EVENT = {
+  diamond: ['Мяу! Блестит! Я первый увидел — значит, моё.', 'Алмаз? Отлично. Обменяем на тонну корма.', 'Мур-р… Этот камушек идеально подойдёт к моим глазам.'],
+  station: ['Новая станция! Срочно проверю, где тут тёплое место.', 'Мяу! Ещё одна станция — ещё одна коробка, чтобы в ней сидеть.', 'Я лично утверждаю эту станцию. Пометил… то есть подписал.'],
+  flood: ['МЯУ! Я же говорил: вода — это не моё!', 'Мокрый кот — злой кот. Запомните это.', 'Я на крыше. Я всегда на крыше. Вода меня не достанет.'],
+  evac: ['Ничего страшного. Я тоже иногда падаю со шкафа.', 'Мяу. Машина уснула. Я её понимаю.'],
+};
+function catSay(ev) { if (!catOn() || !S.set.jokes) return; const a = CAT_EVENT[ev]; if (a) setTimeout(() => say('cat', a[(Math.random() * a.length) | 0], true), 2200); }
 let oreTipT = 0;
 function showOreTip() { oreTipShownAt = performance.now(); S.tut.oreTip = true; dirty = true; oreTipT = 10; $('oreTip').classList.remove('off'); haptic('light'); SFX.pick(); track('tip_ore'); }
 function hideOreTip() { oreTipT = 0; $('oreTip').classList.add('off'); }
@@ -782,7 +810,7 @@ function update(dt) {
   if (S.hull <= 0 && !paused) { S.hull = 0; evacuate('hull'); }
   if (atBase >= 0) S.heat = Math.max(0, S.heat - 30 * dt);
   // амбиент-реплики
-  if (run && S.set.jokes) { ambientT -= dt; if (ambientT <= 0) { ambientT = rnd(80, 130); if (S.shop.cat && Math.random() < .4) say('cat', CAT_LINES[(Math.random() * CAT_LINES.length) | 0]); else say(Math.random() < .5 ? 'petrovich' : 'alya', C.JOKES.ambient[(Math.random() * C.JOKES.ambient.length) | 0]); } }
+  if (run && S.set.jokes) { ambientT -= dt; if (ambientT <= 0) { ambientT = rnd(80, 130); if (catOn() && Math.random() < .5) say('cat', CAT_LINES[(Math.random() * CAT_LINES.length) | 0]); else say(Math.random() < .5 ? 'petrovich' : 'alya', C.JOKES.ambient[(Math.random() * C.JOKES.ambient.length) | 0]); } }
   if (S.coins >= 1000) achieve('budget');
   // подсказка про ответвления: один раз, после первых метров тоннеля
   if (!S.tut.oreTip && run && !paused && (M.x >= bx(0) + 5 || S.stats.playTime > 25)) showOreTip();
@@ -933,7 +961,7 @@ function drawMachine(ts, ox, oy) {
   const s = ts * 1.22;
   if (S.heat > 75) { cx.shadowColor = '#ff4a1a'; cx.shadowBlur = 14 + Math.sin(time * 12) * 6; }
   const lvSpr = S.up.drill > 1 && ok(IMG['drill_' + S.up.drill]) ? IMG['drill_' + S.up.drill] : IMG.drill;
-  const spr = S.legend && ok(IMG.drill_legend) ? IMG.drill_legend : S.shop.skin_gold ? (ok(IMG.drill_gold) ? IMG.drill_gold : goldSprite()) : lvSpr;
+  const spr = S.legend && ok(IMG.drill_legend) ? IMG.drill_legend : itemOn('skin_gold') ? (ok(IMG.drill_gold) ? IMG.drill_gold : goldSprite()) : lvSpr;
   const sw0 = spr.naturalWidth || spr.width || 256, sh0 = spr.naturalHeight || spr.height || 190, dh = s * sh0 / sw0;
   // навесное оборудование: видно, что улучшено (растёт с уровнем)
   const att = (n, x, y, w, ax, ay) => { const im = IMG['att/' + n]; if (!ok(im)) return; const h = w * im.naturalHeight / im.naturalWidth; cx.drawImage(im, x - w * ax, y - h * ay, w, h); };
@@ -960,13 +988,13 @@ function drawMachine(ts, ox, oy) {
     const rw = s * .3, rh = rw * IMG.i_rocket.naturalHeight / IMG.i_rocket.naturalWidth; cx.drawImage(IMG.i_rocket, -s * .62, -s * .36, rw, rh);
   }
   cx.restore();
-  if (S.shop.cat) {
+  if (catOn()) {
     cx.save(); cx.translate(px - ts * .08, py - ts * .34 + Math.sin(time * 3) * 1.2); if (d === 'l') cx.scale(-1, 1);
     if (ok(IMG.cat_sit)) { const cw = ts * .55, ch = cw * IMG.cat_sit.naturalHeight / IMG.cat_sit.naturalWidth; cx.drawImage(IMG.cat_sit, -cw / 2, -ch, cw, ch); }
 
     cx.restore();
   }
-  if (S.shop.skin_gold && Math.random() < .3) particles.push({ x: M.rx + .5 + rnd(-.4, .4), y: M.ry + .5 + rnd(-.3, .3), vx: rnd(-.5, .5), vy: rnd(-1.5, -.5), life: .5, c: '#ffe27a' });
+  if (itemOn('skin_gold') && !S.legend && Math.random() < .3) particles.push({ x: M.rx + .5 + rnd(-.4, .4), y: M.ry + .5 + rnd(-.3, .3), vx: rnd(-.5, .5), vy: rnd(-1.5, -.5), life: .5, c: '#ffe27a' });
 }
 
 function drawLight(ts, ox, oy) {
@@ -974,10 +1002,13 @@ function drawLight(ts, ox, oy) {
   lx.globalCompositeOperation = 'source-over';
   lx.clearRect(0, 0, lw, lh);
   const groundTop = (SURF - 1) * ts - oy;
-  for (let y = 0; y < lh; y += 8) {
-    const wy = (y / sc + oy) / ts; if (wy < SURF - 1) continue;
+  // темнота начинается ровно с линии дна (без «ступенек», иначе полоса воды мигает при движении камеры)
+  const gTop = Math.max(0, groundTop * sc);
+  for (let y = Math.floor(gTop / 8) * 8; y < lh; y += 8) {
+    const y0 = Math.max(y, gTop); if (y0 >= y + 8) continue;
+    const wy = (y0 / sc + oy) / ts;
     const a = clamp(.55 + (wy - SURF) * .012, .55, .9);
-    lx.fillStyle = `rgba(2,4,8,${a})`; lx.fillRect(0, y, lw, 8);
+    lx.fillStyle = `rgba(2,4,8,${a})`; lx.fillRect(0, y0, lw, y + 8 - y0);
   }
   lx.globalCompositeOperation = 'destination-out';
   const hole = (wx, wy, r, a) => { const x = (wx * ts - ox) * sc, y = (wy * ts - oy) * sc, rr = r * ts * sc; if (x < -rr || x > lw + rr || y < -rr || y > lh + rr) return; const g = lx.createRadialGradient(x, y, rr * .2, x, y, rr); g.addColorStop(0, `rgba(0,0,0,${a})`); g.addColorStop(1, 'rgba(0,0,0,0)'); lx.fillStyle = g; lx.beginPath(); lx.arc(x, y, rr, 0, 7); lx.fill(); };
@@ -1204,55 +1235,52 @@ function openBase() {
   const pips = n => '<span class="pips">' + [1, 2, 3, 4, 5].map(i => `<i class="${i <= n ? 'on' : ''}"></i>`).join('') + '</span>';
   let h = '';
   const tk = S.refs.tokens, sm = baseSummary;
-  // 1) Итог вылазки — одной строкой
+  // 1) Вылазка завершена
   if (sm) {
-    const loot = Object.entries(sm.cnt).map(([t, n]) => `<span class="lt">${ORE_ICON[t]}×${n}</span>`).join(' · ');
-    if (loot || sm.gain) h += `<div class="bloot"><span class="bl">Добыча:</span> ${loot || '—'} ${sm.gain ? `<b>+${sm.gain} 🪙</b>` : ''}</div>`;
-    sm.extra.forEach(([i, n]) => { h += `<div class="bex">${i} ${n} — в коллекцию!</div>`; });
+    const loot = Object.entries(sm.cnt).map(([t, n]) => `<span class="lt">${ORE_ICON[t]}<small>×${n}</small></span>`).join('');
+    const svc = !sm.free && sm.service > 0 ? `<div class="svc">Заправка и ремонт: −${sm.service} 🪙</div>` : '';
+    if (loot || sm.extra.length) h += `<div class="trip"><div class="tt">Вылазка завершена</div><div class="loot">${loot}</div>
+      ${sm.gain ? `<div class="gain">🪙 +${sm.gain}</div>` : ''}
+      ${sm.extra.map(([i, n]) => `<div class="ex">${i} ${n} — в коллекцию!</div>`).join('')}${svc}</div>`;
+    else if (svc) h += svc.replace('class="svc"', 'class="bsvc"');
   }
-  // 2) Маршрут и главный выбор
+  // 2) Улучшения — все карточки
+  const ups = Object.keys(C.UPGRADES).filter(k => F.up(k));
+  h += `<div class="ups-h"><span>⚙️ Улучшения</span><b>${tk ? '🎟 ' + tk + ' · ' : ''}🪙 ${Math.floor(S.coins)}</b></div><div class="ups">` + ups.map(k => {
+    const u = C.UPGRADES[k], n = S.up[k], cost = upCost(k);
+    const btn = cost === null ? '<b class="ok">MAX ✔</b>' : tk ? `<button class="btn good" data-free="${k}">🎟 Бесплатно</button>` : `<button class="btn" data-up="${k}" ${S.coins < cost ? 'disabled' : ''}>${cost} 🪙</button>`;
+    return `<div class="up lv${n}"><img class="uimg" src="${upImg(k, n)}" alt=""><div class="un">${u.name} <small>ур. ${n}</small></div>${pips(n)}
+      <div class="uv">${cost !== null ? u.fmt(u.vals[n - 1]) + ' → <b>' + u.fmt(u.vals[n]) + '</b>' : 'максимум'}</div>${btn}<div class="uh">${u.desc}</div></div>`;
+  }).join('') + `</div>`;
+  if (S.built === 7) h += `<button class="btn ${S.proto ? 'sec2' : ''} wide" id="protoBtn">🚀 ${S.proto ? 'Снять прототип бура' : 'Поставить прототип бура (быстрее, но греется)'}</button>`;
+  // 3) Цель и «дальше»
   if (S.built < NCH) {
-    h += `<div class="goal">${routeBar()}
+    h += `<div class="goal" style="margin-top:12px">${routeBar()}
       <div class="gnext">До следующей станции: <b>${segGap} ${cellsWord(segGap)}</b> вправо</div>
       <button class="btn good wide big" id="goBtn">Продолжить тоннель →</button>
       <div class="bonus">Руда и алмазы дают монеты для улучшений</div></div>`;
-  } else h += `<div class="goal">${routeBar()}<div class="gnext"><b>Бесконечный режим</b> — копай где хочешь, руда появляется снова</div><button class="btn good wide big" id="goBtn">Копать дальше →</button></div>`;
-  if (sm && !sm.free && sm.service > 0) h += `<div class="bsvc">Заправка и ремонт: −${sm.service} 🪙</div>`;
-  // 3) Улучшения: одно рекомендованное + «Все»
-  const ups = Object.keys(C.UPGRADES).filter(k => F.up(k));
-  const rec = recUpgrade(ups);
-  const upCard = (k, mini) => {
-    const u = C.UPGRADES[k], n = S.up[k], cost = upCost(k);
-    const btn = cost === null ? '<b class="ok">MAX ✔</b>' : tk ? `<button class="btn good" data-free="${k}">🎟 Бесплатно</button>` : `<button class="btn" data-up="${k}" ${S.coins < cost ? 'disabled' : ''}>${cost} 🪙</button>`;
-    if (mini) return `<div class="urec"><img src="${upImg(k, n)}" alt=""><div class="ut"><b>${u.name}</b> <small>ур. ${n} → ${n + 1}</small><span>${u.desc}</span></div>${btn}</div>`;
-    return `<div class="up lv${n}"><img class="uimg" src="${upImg(k, n)}" alt=""><div class="un">${u.name} <small>ур. ${n}</small></div>${pips(n)}
-      <div class="uv">${cost !== null ? u.fmt(u.vals[n - 1]) + ' → <b>' + u.fmt(u.vals[n]) + '</b>' : 'максимум'}</div>${btn}<div class="uh">${u.desc}</div></div>`;
-  };
-  h += `<div class="ups-h"><span>⚙️ Улучшения</span><span class="uhr"><b>${tk ? '🎟 ' + tk + ' · ' : ''}🪙 ${Math.floor(S.coins)}</b><button class="btn sec2 sm" id="allUpsBtn">${baseAll ? 'Свернуть' : 'Все'}</button></span></div>`;
-  if (baseAll) {
-    h += `<div class="ups">` + ups.map(k => upCard(k)).join('') + `</div>`;
-    if (S.built === 7) h += `<button class="btn ${S.proto ? 'sec2' : ''} wide" id="protoBtn">🚀 ${S.proto ? 'Снять прототип бура' : 'Поставить прототип бура (быстрее, но греется)'}</button>`;
-  } else if (rec) h += upCard(rec, true);
-  else h += `<div class="bsvc">Всё оборудование прокачано до максимума ✔</div>`;
-  // 4) Остальное — в раскрывающихся блоках
-  const fold = (id, title, inner) => `<details class="fold" data-fold="${id}" ${baseFolds[id] ? 'open' : ''}><summary>${title}</summary><div class="fb">${inner}</div></details>`;
+  } else h += `<div class="goal" style="margin-top:12px">${routeBar()}<div class="gnext"><b>Бесконечный режим</b> — копай где хочешь, руда появляется снова</div><button class="btn good wide big" id="goBtn">Копать дальше →</button></div>`;
+  // 4) Расходники — открыто
   const cons = ['can', 'rep', 'cool'].filter(k => F.cons(k));
   const CONS_IC = { can: 'fuel', rep: 'repair', cool: 'coolant' };
-  if (cons.length) h += fold('cons', `🎒 С собой в вылазку <span class="fs">${cons.map(k => C.CONSUMABLES[k].icon + ' ' + S.cons[k]).join('  ')}</span>`, `<div class="consc">` + cons.map(k => { const c = C.CONSUMABLES[k], full = S.cons[k] >= consCap();
+  if (cons.length) h += `<div class="ups-h"><span>🎒 С собой в вылазку</span></div><div class="consc">` + cons.map(k => { const c = C.CONSUMABLES[k], full = S.cons[k] >= consCap();
     return `<div class="cc"><img src="${icSrc(CONS_IC[k])}" alt=""><div class="cn">${c.name}</div><div class="cd">${c.desc}</div><div class="cq">в машине: <b>${S.cons[k]}/${consCap()}</b></div>
-      <button class="btn" data-cons="${k}" ${full || S.coins < c.price ? 'disabled' : ''}>${full ? 'Полно' : c.price + ' 🪙'}</button></div>`; }).join('') + `</div>`);
-  if (refReady()) h += fold('inv', `👥 Друзья — бесплатные улучшения <span class="fs">${Math.min(S.refs.n, 3)}/3</span>`, inviteBlock());
+      <button class="btn" data-cons="${k}" ${full || S.coins < c.price ? 'disabled' : ''}>${full ? 'Полно' : c.price + ' 🪙'}</button></div>`; }).join('') + `</div>`;
+  if (refReady()) h += `<div style="margin-top:12px">${inviteBlock()}</div>`;
+  // 5) Свернуть можно только задания и переезд
+  const fold = (id, title, inner) => `<details class="fold" data-fold="${id}" ${baseFolds[id] ? 'open' : ''}><summary>${title}</summary><div class="fb">${inner}</div></details>`;
   const aq = F.quests ? activeQuests() : [];
   if (aq.length) h += fold('q', `📋 Задания <span class="fs">${aq.length}</span>`, aq.map(q => `<div class="qrow">• ${q.text} <b>+${q.reward}🪙</b></div>`).join(''));
   if (S.built >= 1) h += fold('tp', '🚃 Переезд по станциям', `<div class="cons">` + Array.from({ length: S.built + 1 }, (_, i) => `<button class="btn sec2" data-tp="${i}" ${i === b ? 'disabled' : ''}>${i === 0 ? 'Чукотка' : i === NCH ? 'Аляска' : 'Ст. ' + i}</button>`).join('') + `</div>`);
-  if (F.shop) h += `<button class="btn sec2 wide" id="shopBtn">⭐ Лавка миллиардера</button>`;
-  openSheet(stationName(b), h);
+  // 6) Лавка миллиардера — раскрыта целиком
+  if (F.shop) h += `<div class="ups-h"><span>⭐ Лавка миллиардера</span></div><div class="shopnote">Всю игру можно пройти без звёзд — здесь забавные штуки и немного ускорения.</div><div class="sec">${shopItemsHtml()}</div>`;
+  openSheet('⚙️ Улучшения на базе «' + stationName(b) + '»', h);
   $('sheetBody').querySelectorAll('details.fold').forEach(d => d.addEventListener('toggle', () => { baseFolds[d.dataset.fold] = d.open; }));
   baseSummary = null;
   const body = $('sheetBody');
   const on = (id, fn) => { const e = body.querySelector('#' + id); if (e) e.onclick = fn; };
-  on('goBtn', () => { baseAll = false; closeSheet(); });
-  on('allUpsBtn', () => { baseAll = !baseAll; openBase(); });
+  on('goBtn', closeSheet);
+  bindShop(() => openBase());
   on('shopBtn', () => openShop(true));
   on('protoBtn', () => { S.proto = !S.proto; if (S.proto) say('billionaire', C.CHAPTERS_DATA[7].joke, true); dirty = true; openBase(); });
   body.querySelectorAll('[data-cons]').forEach(e => e.onclick = () => { const k = e.dataset.cons, c = C.CONSUMABLES[k]; if (S.coins >= c.price && S.cons[k] < consCap()) { S.coins -= c.price; S.cons[k]++; SFX.coin(); dirty = true; openBase(); } });
@@ -1334,6 +1362,7 @@ function buildSegment() {
   const here = baseAt[idx(M.x, M.y)];
   if (here === S.built && S.built < NCH) { atBase = -1; onArriveBase(S.built, false, true); }
   if (S.built >= NCH) { finale(); return; }
+  catSay('station');
   banner('🎉 ' + stationName(S.built).toUpperCase() + ' ОТКРЫТА · +' + reward + ' 🪙', 'Тоннель: ' + pct() + '%');
   setTimeout(() => chapterIntro(), 2800);
 }
@@ -1414,28 +1443,45 @@ function openCollection() {
 }
 function openSettings() {
   const t = (k, name) => `<label class="toggle"><span>${name}</span><input type="checkbox" data-set="${k}" ${S.set[k] ? 'checked' : ''}></label>`;
-  openSheet('Настройки', `<div class="sec">${t('sound', '🔊 Звук')}${t('jokes', '💬 Реплики персонажей')}${t('vibro', '📳 Вибрация')}${t('calm', '🌙 Меньше тряски и вспышек')}</div>
+  const ti = (id, name) => S.shop[id] ? `<label class="toggle"><span>${name}</span><input type="checkbox" data-inv="${id}" ${itemOn(id) ? 'checked' : ''}></label>` : '';
+  openSheet('Настройки', `<div class="sec">${t('sound', '🔊 Звук')}${t('jokes', '💬 Реплики персонажей')}${t('vibro', '📳 Вибрация')}${t('calm', '🌙 Меньше тряски и вспышек')}${ti('cat', '🐈 Кот-прораб на буровой')}${ti('skin_gold', '✨ Золотой бур')}</div>
     <button class="btn sec2 wide" id="resetBtn">Начать кампанию заново</button>
     <p style="font-size:12px;color:#9db4c2">Прогресс сохраняется в облаке Telegram. Коллекция и достижения при перезапуске сохраняются.</p>`);
   $('sheetBody').querySelectorAll('[data-set]').forEach(e => e.onchange = () => { S.set[e.dataset.set] = e.checked; dirty = true; });
+  $('sheetBody').querySelectorAll('[data-inv]').forEach(e => e.onchange = () => { S.set['off_' + e.dataset.inv] = !e.checked; dirty = true; save(true); });
   $('resetBtn').onclick = () => modal('<h2>Начать заново?</h2><p>Тоннель, деньги и улучшения обнулятся. Коллекция и достижения останутся.</p>', [
     { t: 'Отмена', cls: 'btn sec2' }, { t: 'Заново', cls: 'btn', fn: () => newCampaign() }]);
 }
 
 // ---------- Лавка за Telegram Stars ----------
 function shopReady() { return !!(window.DIG_SHOP && inTG && tg.openInvoice && tg.isVersionAtLeast && tg.isVersionAtLeast('6.1')); }
-function openShop(fromBase) {
-  const items = C.SHOP.filter(it => F.item(it.id)).map(it => {
+// Купленное можно включать и выключать (кот, золотой бур)
+const TOGGLABLE = { cat: ['Убрать кота', 'Вернуть кота'], skin_gold: ['Снять золото', 'Надеть золото'] };
+const itemOn = id => !!S.shop[id] && S.set['off_' + id] !== true;
+const catOn = () => itemOn('cat');
+function shopItemsHtml() {
+  return C.SHOP.filter(it => F.item(it.id)).map(it => {
     const owned = !it.consumable && S.shop[it.id];
     const usedEst = it.id === 'estimate' && S.turboUntil > S.stats.playTime;
-    return `<div class="row"><img src="assets/shop_${it.id}.webp" alt="" style="width:52px;height:52px;object-fit:contain;flex:none;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'${it.icon}',style:'font-size:26px;width:52px;text-align:center'}))"><span class="grow"><b>${it.name}</b><div class="sub">${it.desc}</div></span>
-      ${owned ? '<b class="ok">Есть ✔</b>' : `<button class="btn" data-buy="${it.id}" ${usedEst ? 'disabled' : ''}>⭐ ${it.stars}</button>`}</div>`;
+    const act = owned ? (TOGGLABLE[it.id] ? `<button class="btn sec2 sm" data-tog="${it.id}">${itemOn(it.id) ? TOGGLABLE[it.id][0] : TOGGLABLE[it.id][1]}</button>` : '<b class="ok">Есть ✔</b>') : `<button class="btn" data-buy="${it.id}" ${usedEst ? 'disabled' : ''}>⭐ ${it.stars}</button>`;
+    return `<div class="row"><img src="assets/shop_${it.id}.webp" alt="" style="width:52px;height:52px;object-fit:contain;flex:none;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))"><span class="grow"><b>${it.name}</b><div class="sub">${it.desc}</div></span>${act}</div>`;
   }).join('');
+}
+function bindShop(reopen) {
+  $('sheetBody').querySelectorAll('[data-buy]').forEach(b => b.onclick = () => buy(b.dataset.buy));
+  $('sheetBody').querySelectorAll('[data-tog]').forEach(b => b.onclick = () => {
+    const id = b.dataset.tog; S.set['off_' + id] = itemOn(id); dirty = true; save(true);
+    if (id === 'cat') toast(catOn() ? '🐈 Кот вернулся на крышу буровой' : '🐈 Кот ушёл спать на базу');
+    reopen();
+  });
+}
+function openShop(fromBase) {
+  const items = shopItemsHtml();
   openSheet('⭐ Лавка миллиардера', `<div class="sec" style="background:#2a2410;border:1px solid #6b5a1f"><div style="font-size:13.5px;line-height:1.45">Всю игру можно пройти <b>без звёзд</b>. Здесь — забавные штуки и немного ускорения для тех, кто спешит к Аляске.</div></div>
     <div class="sec">${items}</div>
     ${fromBase ? '<button class="btn sec2 wide" id="shopBack">← Назад на базу</button>' : ''}
     <p style="font-size:11.5px;color:#9db4c2">Оплата через Telegram Stars. Вопросы по оплате — команда /paysupport в боте @${BOT}.</p>`);
-  $('sheetBody').querySelectorAll('[data-buy]').forEach(b => b.onclick = () => buy(b.dataset.buy));
+  bindShop(() => openShop(fromBase));
   if ($('shopBack')) $('shopBack').onclick = () => openBase();
 }
 function grant(id) {
