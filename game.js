@@ -14,13 +14,15 @@ const rnd = (a, b) => a + Math.random() * (b - a);
 const SEG = C.SEG, NCH = C.CHAPTERS, H = C.H, SURF = C.SURFACE, CT = C.CT, CB = C.CB;
 // Длины участков: последние два — длинные (финал можно долго и интересно копать).
 // Старые сохранения, где уже дошли до 9-го участка, остаются на прежней геометрии.
-const SEGL_LONG = C.SEGL || Array(NCH).fill(SEG), SEGL_OLD = Array(NCH).fill(SEG);
-let SEGL = SEGL_LONG, BXS = [], W = 0, N = 0;
-function setGeo(long) {
-  SEGL = long ? SEGL_LONG : SEGL_OLD; BXS = [3]; for (let i = 0; i < NCH; i++) BXS.push(BXS[i] + SEGL[i]);
+// Геометрия карты по версиям сохранений: 1 — все по 22; 2 — длинный финал; 3 — каждый участок длиннее (текущая)
+const GEOS = { 1: Array(NCH).fill(SEG), 2: [22, 22, 22, 22, 22, 22, 22, 22, 40, 48], 3: C.SEGL || Array(NCH).fill(SEG) };
+const GEO_CUR = 3;
+let SEGL = GEOS[GEO_CUR], BXS = [], W = 0, N = 0;
+function setGeo(v) {
+  SEGL = GEOS[v] || GEOS[GEO_CUR]; BXS = [3]; for (let i = 0; i < NCH; i++) BXS.push(BXS[i] + SEGL[i]);
   W = BXS[NCH] + 7; N = W * H;
 }
-setGeo(true);
+setGeo(GEO_CUR);
 const bx = i => BXS[clamp(i, 0, NCH)];
 const segLen = i => SEGL[clamp(i, 0, NCH - 1)];
 const idx = (x, y) => y * W + x;
@@ -131,7 +133,7 @@ function generate(seed) {
 // ---------- Состояние ----------
 let S = null;
 const defaultState = () => ({
-  v: 1, wv: 2, seed: (Math.random() * 1e9) | 0, coins: C.START_COINS,
+  v: 1, wv: 3, seed: (Math.random() * 1e9) | 0, coins: C.START_COINS,
   fuel: C.UPGRADES.tank.vals[0], hull: C.UPGRADES.hull.vals[0], heat: 0,
   x: bx(0), y: CB, dir: 'r',
   cargo: [], wh: { iron: 0, copper: 0, gold: 0, diamond: 0, colored: [] },
@@ -171,8 +173,13 @@ const F = {
 function applyStateToMap() {
   // wv: 2 — новая геометрия; 1 — старая; нет — сохранение до обновления
   let oldW = 0;
-  if (!S.wv) { if (S.built >= 9) S.wv = 1; else { S.wv = 2; setGeo(false); oldW = W; } }
-  setGeo(S.wv === 2);
+  // Переезд на новую геометрию: пока не построена ни одна станция — сразу на текущую;
+  // иначе остаёмся на своей (станции уже стоят на своих местах). Старые без версии -> 2 (первые 8 участков совпадают).
+  const from = S.wv || 1;
+  let to = from;
+  if (S.built === 0) to = GEO_CUR; else if (from === 1 && S.built < 9) to = 2;
+  if (to !== from) { setGeo(from); oldW = W; S.wv = to; } else S.wv = from;
+  setGeo(S.wv);
   generate(S.seed);
   const dec = (str, arr) => { if (!str) return; const p = str.split(','); let pos = 0, val = 0; for (const s of p) { const n = +s; if (val) arr.fill(1, pos, pos + n); pos += n; val ^= 1; } };
   if (oldW && oldW !== W) {
@@ -1638,7 +1645,7 @@ $('sheetX').addEventListener('click', () => { if (!$('title').classList.contains
 function newCampaign() {
   const keep = S ? { coll: S.coll, ach: S.ach, set: S.set, completions: S.completions } : {};
   S = Object.assign(defaultState(), keep); S.tut.intro = false;
-  setGeo(true); generate(S.seed); computeDist(); teleport(0); reveal(M.x, M.y, 3);
+  setGeo(GEO_CUR); generate(S.seed); computeDist(); teleport(0); reveal(M.x, M.y, 3);
   $('finale').classList.add('hidden'); $('sheet').classList.add('hidden'); $('modal').classList.add('hidden');
   dirty = true; save(true); showTitle();
 }
@@ -1692,7 +1699,7 @@ function boot() {
   resize();
   loadAll(saved => {
     if (saved && saved.v === 1) { S = Object.assign(defaultState(), saved); if (!saved.wv) delete S.wv; applyStateToMap(); M.x = S.x; M.y = S.y; M.rx = M.x; M.ry = M.y; const k = idx(M.x, M.y); atBase = isOpenBase(k) ? baseAt[k] : -1; if (atBase < 0) run = { fuel0: S.fuel, maxHeat: 0, away: 0 }; }
-    else { S = defaultState(); setGeo(true); generate(S.seed); computeDist(); teleport(0); }
+    else { S = defaultState(); setGeo(GEO_CUR); generate(S.seed); computeDist(); teleport(0); }
     reveal(M.x, M.y, 3);
     camX = M.x * TS - VW / 2; camY = M.y * TS - VH / 2;
     showTitle(); track('open', { start: inTG ? tg.initDataUnsafe.start_param || '' : '' });
