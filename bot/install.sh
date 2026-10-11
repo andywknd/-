@@ -6,9 +6,19 @@ set -euo pipefail
 REPO="https://github.com/andywknd/-.git"
 DIR="/opt/digtunnel"
 
-echo "==> Пакеты"
-apt-get update -qq
-DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git python3-venv python3-pip >/dev/null
+echo "==> Пакеты (1–2 минуты)"
+NEED=""
+command -v git >/dev/null || NEED="$NEED git"
+python3 -c "import venv, ensurepip" 2>/dev/null || NEED="$NEED python3-venv python3-pip"
+if [ -n "$NEED" ]; then
+  echo "    ставлю:$NEED"
+  # ждём, если apt занят автообновлением
+  for i in $(seq 1 60); do fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || break; echo "    apt занят, жду ($i)..."; sleep 5; done
+  apt-get update -q || true
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q $NEED
+else
+  echo "    всё нужное уже есть"
+fi
 
 echo "==> Код"
 if [ -d "$DIR/.git" ]; then
@@ -19,7 +29,6 @@ fi
 
 echo "==> Python-окружение"
 python3 -m venv "$DIR/venv"
-"$DIR/venv/bin/pip" install -q --upgrade pip
 "$DIR/venv/bin/pip" install -q -r "$DIR/bot/requirements.txt"
 
 ENV="$DIR/bot/.env"
