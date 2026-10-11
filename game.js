@@ -1263,6 +1263,8 @@ function useCons(k) {
 
 // ---------- База ----------
 function openSheet(title, html) {
+  // с титульного экрана панель должна быть поверх него (иначе «Коллекция» и «Настройки» открываются под заставкой)
+  $('sheet').classList.toggle('ontop', !$('title').classList.contains('hidden'));
   $('sheetTitle').textContent = title; $('sheetBody').innerHTML = html; $('sheet').classList.remove('hidden'); paused = true;
 }
 function closeSheet() { $('sheet').classList.add('hidden'); paused = false; save(true); }
@@ -1646,7 +1648,7 @@ function finale() {
     const f = $('finale'); f.classList.remove('hidden'); paused = true; finT = 0; finCars = []; finFx = [];
     const mins = Math.round(S.stats.playTime / 60);
     $('finBody').innerHTML = `<div class="fhead"><img src="assets/fin/medal.webp" alt=""><div><h2>Тоннель до Америки проложен!</h2><p>Чукотка и Аляска соединены. По тоннелю уже поехали первые машины.</p></div></div>
-      <div class="frew"><img src="assets/drill_legend.webp" alt=""><div><b>Эксклюзив: легендарный бур</b><span>Радужный алмазный бур — только у тех, кто дошёл до конца. Копает мощнее любого другого.</span></div></div>
+      <div class="frew"><img src="assets/drill_legend.webp" alt=""><div><b>Эксклюзив: легендарный бур</b><span>Платиновый бур с алмазным наконечником — только у тех, кто дошёл до конца. Копает мощнее любого другого.</span></div></div>
       <div class="frew"><img src="assets/fin/infinity.webp" alt=""><div><b>Бесконечный режим открыт</b><span>Без уровней и стен. Под проливом спрятаны три древних сокровища, разбитых на осколки, — найди их все. Руда и алмазы появляются снова.</span></div></div>
       <div class="fstats"><div><b>${mins}</b><span>минут</span></div><div><b>${S.stats.diamonds}</b><span>алмазов</span></div><div><b>${S.stats.delivered}</b><span>находок</span></div><div><b>${S.stats.accidents}</b><span>аварий</span></div></div>
       <div class="ftitle">Звание: <b>${titleFor()}</b></div>

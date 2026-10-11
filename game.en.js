@@ -1265,6 +1265,8 @@ function useCons(k) {
 
 // ---------- База ----------
 function openSheet(title, html) {
+  // с титульного экрана панель должна быть поверх него (иначе «Коллекция» и «Настройки» открываются под заставкой)
+  $('sheet').classList.toggle('ontop', !$('title').classList.contains('hidden'));
   $('sheetTitle').textContent = title; $('sheetBody').innerHTML = html; $('sheet').classList.remove('hidden'); paused = true;
 }
 function closeSheet() { $('sheet').classList.add('hidden'); paused = false; save(true); }
@@ -1648,7 +1650,7 @@ function finale() {
     const f = $('finale'); f.classList.remove('hidden'); paused = true; finT = 0; finCars = []; finFx = [];
     const mins = Math.round(S.stats.playTime / 60);
     $('finBody').innerHTML = `<div class="fhead"><img src="assets/fin/medal.webp" alt=""><div><h2>The tunnel to America is complete!</h2><p>Chukotka and Alaska are connected. The first vehicles are already driving through.</p></div></div>
-      <div class="frew"><img src="assets/drill_legend.webp" alt=""><div><b>Exclusive: legendary drill</b><span>A rainbow diamond drill — only for those who made it to the end. Digs harder than any other.</span></div></div>
+      <div class="frew"><img src="assets/drill_legend.webp" alt=""><div><b>Exclusive: legendary drill</b><span>A platinum drill with a diamond tip — only for those who made it to the end. Digs harder than any other.</span></div></div>
       <div class="frew"><img src="assets/fin/infinity.webp" alt=""><div><b>Endless mode unlocked</b><span>No levels, no walls. Three ancient treasures, broken into shards, are hidden under the strait — find them all. Ore and diamonds keep coming back.</span></div></div>
       <div class="fstats"><div><b>${mins}</b><span>minutes</span></div><div><b>${S.stats.diamonds}</b><span>diamonds</span></div><div><b>${S.stats.delivered}</b><span>finds</span></div><div><b>${S.stats.accidents}</b><span>crashes</span></div></div>
       <div class="ftitle">Rank: <b>${titleFor()}</b></div>

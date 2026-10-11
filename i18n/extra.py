@@ -6,4 +6,5 @@ EXTRA = {
     'Бур 3, Корпус 2': 'Drill 3, Hull 2',
     'Бур 4, Привод 3': 'Drill 4, Drive 3',
     '⭐ Премия бригаде: +400 🪙': '⭐ Crew bonus: +400 🪙',
+    'Платиновый бур с алмазным наконечником — только у тех, кто дошёл до конца. Копает мощнее любого другого.': 'A platinum drill with a diamond tip — only for those who made it to the end. Digs harder than any other.',
 }
