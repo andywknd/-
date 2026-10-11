@@ -471,7 +471,7 @@ function arrive() {
   if (b >= 0 && atBase < 0) onArriveBase(b, false);
   if (b < 0 && atBase >= 0) onLeaveBase();
   atBase = b;
-  if (baseAt[k] === S.built + 1 && !saidOnce['near' + S.built]) { saidOnce['near' + S.built] = 1; say('petrovich', 'Дошли до места будущей станции! Теперь на базе нажми «Построить» — нужны железо и медь.', true); }
+  if (baseAt[k] === S.built + 1 && !saidOnce['near' + S.built]) { saidOnce['near' + S.built] = 1; say('petrovich', 'Дошли до будущей станции! Жми «🏗 Построить» — покажу, чего хватает, а чего нет.', true); setTimeout(() => { if (baseAt[idx(M.x, M.y)] === S.built + 1 && $('sheet').classList.contains('hidden')) openSite(); }, 700); }
   dirty = true;
 }
 
@@ -482,7 +482,7 @@ function onLeaveBase() {
 }
 
 let baseSummary = '';
-function onArriveBase(b, evac) {
+function onArriveBase(b, evac, noOpen) {
   const first = S.visited.indexOf(b) < 0;
   if (first) { S.visited.push(b); if (b > 0) setTimeout(() => say('petrovich', C.JOKES.station), 600); }
   S.lastBase = b; atBase = b;
@@ -505,7 +505,7 @@ function onArriveBase(b, evac) {
     if (items.length >= cargoMax()) questDone('full');
     if (items.length && run.maxHeat < 75) questDone('cool');
     if (S.fuel < tankMax() * .05) achieve('lastdrop');
-    if (!items.length && run.fuel0 - S.fuel > 6) setTimeout(() => say('petrovich', C.JOKES.empty), 500);
+    if (!noOpen && !items.length && run.fuel0 - S.fuel > 6) setTimeout(() => say('petrovich', C.JOKES.empty), 500);
     track('sortie_end', { items: items.length, fuel: Math.round(used) });
   }
   if (F.simple) {
@@ -521,7 +521,7 @@ function onArriveBase(b, evac) {
   if (!S.tut.returned) { S.tut.returned = true; track('tutorial_done'); setTimeout(() => say('alya', F.simple ? 'Добро пожаловать на базу! Лишнее продали, бак заправили. Купи улучшение — и снова копать!' : 'Добро пожаловать на базу! Продай излишки, заправься и купи улучшение.', true), 300); }
   S.heat = 0;
   dirty = true; save(true);
-  if (items.length || S.fuel < tankMax() * .5 || first || artMsgs.length) setTimeout(() => { if (!paused || !$('modal').classList.contains('hidden')) {} openBase(); }, evac ? 50 : 350);
+  if (!noOpen && (items.length || S.fuel < tankMax() * .5 || first || artMsgs.length)) setTimeout(() => { if (!paused || !$('modal').classList.contains('hidden')) {} openBase(); }, evac ? 50 : 350);
 }
 
 // ---------- Квесты/достижения ----------
@@ -599,8 +599,8 @@ function update(dt) {
           if (dmg[k] >= h) { breakCell(tx, ty); S.fuel -= .2; startMove(tx, ty, .16 / speed); }
         } else if (performance.now() - lastTip > 2500) {
           lastTip = performance.now();
-          if (tx >= fenceX() && ty >= SURF) floater(tx, ty, 'Участок не согласован 🚧', '#ffd27a');
-          else if (h < 99) { const need = h - 1; floater(tx, ty, 'Нужен бур ур. ' + need, '#ffd27a'); SFX.warn(); }
+          if (tx >= fenceX() && ty >= SURF) floater(tx, ty, 'Дальше пока закрыто 🚧 Сначала построй этот участок', '#ffd27a');
+          else if (h < 99) { const need = h - 1; floater(tx, ty, 'Слишком твёрдо! Улучши бур до ур. ' + need, '#ffd27a'); SFX.warn(); }
           else if (ty <= SURF - 1) floater(tx, ty, 'Выше — море. Копаем под дном!', '#9fd8ff');
         }
       }
@@ -882,9 +882,10 @@ function hud(dt) {
   else if (S.heat > 85) w = '🌡 Перегрев! Остановись — бур остынет';
   else if (fuelLow) w = `⛽ Пора на базу: нужно ≈${Math.ceil(need)} л`;
   else if (S.cargo.length >= cargoMax() && atBase < 0) w = '📦 Отсек полон — вези на базу';
-  else if (S.built < NCH) w = atBase >= 0 ? '' : `Цель: коридор до станции ${S.built + 1 === NCH ? '«Аляска»' : S.built + 1} →`;
+  else if (S.built < NCH) w = atBase >= 0 ? '' : `Цель: копай вправо до ${S.built + 1 === NCH ? 'станции «Аляска»' : 'станции ' + (S.built + 1)} →`;
   if (w !== warnState) { warnState = w; $('warnline').textContent = w; if (w.startsWith('⛽') || w.startsWith('🚰') || w.startsWith('🛡')) { SFX.warn(); haptic('warning'); } }
   $('baseBtn').classList.toggle('hidden', !(atBase >= 0 && M.st === 'idle'));
+  $('siteBtn').classList.toggle('hidden', !(S.built < NCH && baseAt[idx(M.x, M.y)] === S.built + 1 && M.st === 'idle'));
   $('b-heat').classList.toggle('hidden', !F.heat); $('b-hull').classList.toggle('hidden', !F.hull);
   $('scanBtn').classList.toggle('hidden', !F.scan);
   ['can', 'rep', 'cool'].forEach(k => $('c-' + k).classList.toggle('hidden', !F.cons(k)));
@@ -974,6 +975,7 @@ function openSheet(title, html) {
 function closeSheet() { $('sheet').classList.add('hidden'); paused = false; save(true); }
 $('sheetX').addEventListener('click', closeSheet);
 $('baseBtn').addEventListener('click', () => openBase());
+$('siteBtn').addEventListener('click', () => openSite());
 
 function segCheck() {
   const i = S.built; if (i >= NCH) return null;
@@ -990,8 +992,43 @@ function segCheck() {
     }
   }
   const path = []; if (found >= 0) { let k = found; while (k >= 0) { path.push(k); k = prev[k]; } }
+  let maxX = bx(i); for (const k of q) maxX = Math.max(maxX, k % W);
+  // дошёл ли вообще (любым путём, не только по коридору)
+  let any = found >= 0;
+  if (!any) {
+    const seen = new Uint8Array(N); const q2 = []; for (let y = CT; y <= CB; y++) { const k = idx(bx(i), y); seen[k] = 1; q2.push(k); }
+    for (let h = 0; h < q2.length && !any; h++) { const k = q2[h]; if (baseAt[k] === i + 1) { any = true; break; } const x = k % W, y = (k / W) | 0;
+      for (const [a, b] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) { if (a < xa || a > xb || b < SURF || b >= H) continue; const j = idx(a, b); if (grid[j] === 0 && !seen[j]) { seen[j] = 1; q2.push(j); } } }
+  }
   const req = reqFor(i);
-  return { connected: found >= 0, path, req, okIron: S.wh.iron >= req.iron, okCopper: S.wh.copper >= req.copper };
+  const cI = S.cargo.filter(c => c.t === 1).length, cC = S.cargo.filter(c => c.t === 2).length;
+  const haveI = S.wh.iron + cI, haveC = S.wh.copper + cC;
+  return { connected: found >= 0, path, req, okIron: haveI >= req.iron, okCopper: haveC >= req.copper, haveI, haveC, gap: Math.max(0, bx(i + 1) - 1 - maxX), any };
+}
+
+function buildBlock(chk) {
+  const cd = C.CHAPTERS_DATA[S.built], to = S.built + 1 === NCH ? '«Аляски»' : 'станции ' + (S.built + 1);
+  const ready = chk.connected && chk.okIron && chk.okCopper;
+  const row = (ok, title, val, help) => `<div class="row" style="align-items:flex-start"><span style="font-size:20px;line-height:1.2">${ok ? '✅' : '❌'}</span><span class="grow"><b>${title}</b>${val ? ' <span class="sub">' + val + '</span>' : ''}${!ok && help ? '<div class="sub" style="color:#ffd9a0;margin-top:3px;line-height:1.4">' + help + '</div>' : ''}</span></div>`;
+  let pathHelp = chk.any
+    ? 'Ты добрался до станции, но дорожка где-то уходит за жёлтые пунктирные линии. Тоннель должен идти ровно между ними — прокопай прямой путь по коридору.'
+    : `Дорожка обрывается примерно за ${chk.gap} клет${chk.gap % 10 === 1 && chk.gap !== 11 ? 'ку' : chk.gap % 10 >= 2 && chk.gap % 10 <= 4 && (chk.gap < 12 || chk.gap > 14) ? 'ки' : 'ок'} до ${to}. Копай вправо между жёлтыми пунктирными линиями, пока не упрёшься в станцию.`;
+  const nI = Math.max(0, chk.req.iron - chk.haveI), nC = Math.max(0, chk.req.copper - chk.haveC);
+  return `<div class="sec"><h3><span>🏗 Участок ${S.built + 1} из ${NCH}: ${cd.title}</span></h3>
+    <div class="sub" style="margin-bottom:6px;line-height:1.4">Чтобы построить участок, нужны три вещи:</div>
+    ${row(chk.connected, '1. Дорожка до ' + to, '', pathHelp)}
+    ${row(chk.okIron, '2. Железо', chk.haveI + ' из ' + chk.req.iron, `Не хватает <b>${nI}</b>. Железо — это серые камешки в породе. Их много прямо в коридоре и на 2–3 клетки выше или ниже. Наберёшь — привези на базу или прямо сюда.`)}
+    ${row(chk.okCopper, '3. Медь', chk.haveC + ' из ' + chk.req.copper, `Не хватает <b>${nC}</b>. Медь — это оранжевые камешки с зелёными пятнышками. Чаще всего она на 2–10 клеток ниже коридора.`)}
+    ${!ready && S.cargo.length >= cargoMax() ? '<div class="sub" style="margin-top:6px">📦 Отсек полный? Отвези добычу на базу или улучши «Отсек».</div>' : ''}
+    ${ready ? '<div class="summary" style="margin:8px 0 0">Всё готово! Жми «Построить» — бригада укрепит тоннель, повесит свет и проложит рельсы. Награда: ' + chk.req.reward + ' 🪙</div>' : (S.built === 0 ? '<div class="sub" style="margin-top:6px">Награда за участок: ' + chk.req.reward + ' 🪙</div>' : '<div class="sub" style="margin-top:6px">Совет: ' + cd.rec.replace('Бур', 'бур уровня').replace('Сканер', 'сканер уровня').replace('Корпус', 'корпус уровня').replace('Бак', 'бак уровня').replace('Охлаждение', 'охлаждение уровня').replace('Привод', 'привод уровня').replace('Всё лучшее', 'лучшее оборудование') + '. Награда за участок: ' + chk.req.reward + ' 🪙</div>')}
+    <button class="btn good wide" id="buildBtn" ${ready ? '' : 'disabled'}>🏗 Построить участок</button></div>`;
+}
+
+function openSite() {
+  const chk = segCheck(); if (!chk) return;
+  openSheet('Стройка: ' + (S.built + 1 === NCH ? 'станция «Аляска»' : 'станция ' + (S.built + 1)), buildBlock(chk) + `<button class="btn sec2 wide" id="siteGo">⛏ Копать дальше</button>`);
+  $('sheetBody').querySelector('#buildBtn').onclick = () => buildSegment(chk);
+  $('siteGo').onclick = closeSheet;
 }
 
 function upCost(k) { const n = S.up[k]; if (n >= 5) return null; return Math.round(C.UP_COST[n] * C.UP_MULT[k]); }
@@ -1011,19 +1048,14 @@ function openBase(tab) {
   // стройка
   if (chk) {
     const cd = C.CHAPTERS_DATA[S.built];
-    h += `<div class="sec"><h3><span>🏗 Сегмент ${S.built + 1}/${NCH}: ${cd.title}</span></h3>
-      <div class="row"><span class="grow">Проход в коридоре до ${S.built + 1 === NCH ? '«Аляски»' : 'станции ' + (S.built + 1)}<div class="sub">Непрерывно, между жёлтыми пунктирами</div></span><b class="${chk.connected ? 'ok' : 'no'}">${chk.connected ? '✔' : '✘'}</b></div>
-      <div class="row"><span class="grow">Железо</span><b class="${chk.okIron ? 'ok' : 'no'}">${S.wh.iron}/${chk.req.iron}</b></div>
-      <div class="row"><span class="grow">Медь</span><b class="${chk.okCopper ? 'ok' : 'no'}">${S.wh.copper}/${chk.req.copper}</b></div>
-      <div class="row"><span class="grow sub">Рекомендовано: ${cd.rec}. Награда: ${chk.req.reward} 🪙</span></div>
-      <button class="btn good wide" id="buildBtn" ${chk.connected && chk.okIron && chk.okCopper ? '' : 'disabled'}>Построить сегмент</button></div>`;
+    h += buildBlock(chk);
   }
   // склад
   if (!F.simple) h += `<div class="sec"><h3><span>📦 Склад</span><span>🪙 ${Math.floor(S.coins)}</span></h3>
     <div class="row"><span class="grow">Железо ${S.wh.iron} · Медь ${S.wh.copper} · Золото ${S.wh.gold} · Алмазы ${S.wh.diamond}${S.wh.colored.length ? ' · Цв. ' + S.wh.colored.length : ''}</span></div>
-    <button class="btn wide" id="sellBtn" ${sellVal > 0 ? '' : 'disabled'}>Продать излишки · +${sellVal} 🪙</button>
-    <div class="row sub" style="border:0">Железо и медь для ближайшего сегмента остаются на складе.</div>
-    ${(S.wh.iron - surIron + S.wh.copper - surCopper) > 0 ? `<button class="btn sec2 wide" id="sellAllBtn">Продать и резерв стройки</button>` : ''}</div>`;
+    <button class="btn wide" id="sellBtn" ${sellVal > 0 ? '' : 'disabled'}>Продать лишнее · +${sellVal} 🪙</button>
+    <div class="row sub" style="border:0">Железо и медь для тоннеля оставим, остальное продадим за монеты.</div>
+    ${(S.wh.iron - surIron + S.wh.copper - surCopper) > 0 ? `<button class="btn sec2 wide" id="sellAllBtn">Продать всё, даже железо и медь для тоннеля</button>` : ''}</div>`;
   // сервис
   if (!F.simple) h += `<div class="sec"><h3><span>🔧 Сервис</span></h3>
     <div class="row"><span class="grow">Топливо ${Math.round(S.fuel)}/${tankMax()} · Корпус ${Math.round(S.hull)}/${hullMax()}</span></div>
@@ -1033,9 +1065,9 @@ function openBase(tab) {
     ${S.built === 7 ? `<div class="row"><span class="grow">🚀 Прототип миллиардера<div class="sub">Бур +2 уровня, ×1.7 скорость, нагрев ×2</div></span><button class="btn ${S.proto ? 'sec2' : ''}" id="protoBtn">${S.proto ? 'Снять' : 'Поставить'}</button></div>` : ''}
   </div>`;
   // улучшения
-  h += `<div class="sec"><h3><span>⚙️ Улучшения</span>${F.simple ? '<span>🪙 ' + Math.floor(S.coins) + '</span>' : ''}</h3>` + Object.keys(C.UPGRADES).filter(k => F.up(k)).map(k => {
+  h += `<div class="sec"><h3><span>⚙️ Улучшения — за монеты</span>${F.simple ? '<span>🪙 ' + Math.floor(S.coins) + '</span>' : ''}</h3>` + Object.keys(C.UPGRADES).filter(k => F.up(k)).map(k => {
     const u = C.UPGRADES[k], n = S.up[k], cost = upCost(k);
-    return `<div class="row"><span class="grow"><b>${u.name}</b>${pips(n)}<div class="sub">${u.desc}: ${u.fmt(u.vals[n - 1])}${cost !== null ? ' → <b style="color:#ffcf4a">' + u.fmt(u.vals[n]) + '</b>' : ''}${k === 'drill' ? ' · порода до ' + (n + 1) : ''}</div></span>
+    return `<div class="row"><span class="grow"><b>${u.name}</b>${pips(n)}<div class="sub">${u.desc}: ${u.fmt(u.vals[n - 1])}${cost !== null ? ' → <b style="color:#ffcf4a">' + u.fmt(u.vals[n]) + '</b>' : ''}</div></span>
       ${cost !== null ? `<button class="btn" data-up="${k}" ${S.coins < cost ? 'disabled' : ''}>${cost} 🪙</button>` : '<b class="ok">MAX</b>'}</div>`;
   }).join('') + `</div>`;
   // задания
@@ -1089,7 +1121,8 @@ function openBase(tab) {
 
 function buildSegment(chk) {
   if (!chk || !chk.connected || !chk.okIron || !chk.okCopper) return;
-  S.wh.iron -= chk.req.iron; S.wh.copper -= chk.req.copper; S.coins += chk.req.reward;
+  const take = (key, t, n) => { const w = Math.min(S.wh[key], n); S.wh[key] -= w; n -= w; for (let i = S.cargo.length - 1; i >= 0 && n > 0; i--) if (S.cargo[i].t === t) { S.cargo.splice(i, 1); n--; } };
+  take('iron', 1, chk.req.iron); take('copper', 2, chk.req.copper); S.coins += chk.req.reward;
   for (const k of chk.path) rf[k] = 1;
   for (let y = CT; y <= CB; y++) for (let x = bx(S.built) - 1; x <= bx(S.built) + 1; x++) rf[idx(x, y)] = 1;
   const segN = S.built; S.built++;
@@ -1099,8 +1132,10 @@ function buildSegment(chk) {
   computeDist(); SFX.build(); haptic('success'); track('segment', { n: S.built });
   dirty = true; save(true);
   closeSheet();
+  const here = baseAt[idx(M.x, M.y)];
+  if (here === S.built && S.built < NCH) { atBase = -1; onArriveBase(S.built, false, true); }
   if (S.built >= NCH) { finale(); return; }
-  banner('СЕГМЕНТ ' + S.built + ' ГОТОВ · ТОННЕЛЬ ' + pct() + '%', C.CHAPTERS_DATA[segN].joke);
+  banner('УЧАСТОК ' + S.built + ' ГОТОВ · ТОННЕЛЬ ' + pct() + '%', C.CHAPTERS_DATA[segN].joke);
   setTimeout(() => chapterIntro(), 2800);
 }
 
