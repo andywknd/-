@@ -86,6 +86,38 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .pips{display:inline-flex;gap:3px;margin-left:6px;vertical-align:middle}
 .pips i{width:9px;height:9px;border-radius:3px;background:rgba(255,255,255,.15)}
 .pips i.on{background:var(--accent)}
+.trip{background:linear-gradient(180deg,#1f3a2c,#183024);border:1px solid #2f6b48;border-radius:16px;padding:12px;margin-bottom:10px;text-align:center}
+.trip .tt{font-weight:800;font-size:15px;color:#9fe7b8;margin-bottom:6px}
+.trip .loot{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;font-size:30px}
+.trip .lt small{font-size:15px;font-weight:800;color:#fff;margin-left:2px}
+.trip .gain{font-size:28px;font-weight:900;color:#ffcf4a;margin-top:4px}
+.trip .ex{font-size:13px;color:#ffd9f0;margin-top:3px}
+.trip .svc{font-size:12px;color:#9db4c2;margin-top:4px}
+.goal{background:var(--panel2);border:2px solid #ffcf4a;border-radius:16px;padding:12px;margin-bottom:12px}
+.goal .gt{font-weight:900;font-size:17px;margin-bottom:8px}
+.goal .gnext{text-align:center;font-size:15px;margin:10px 0 2px}
+.goal .gnext b{color:#ffcf4a}
+.goal .bonus{text-align:center;font-size:12px;color:#9db4c2;margin-top:8px}
+.btn.big{font-size:18px;padding:15px}
+.route .rl{display:flex;justify-content:space-between;font-size:12px;color:#9db4c2;margin-bottom:6px}
+.route .rl b{color:#fff;font-size:14px}
+.route .rbar{position:relative;height:14px;border-radius:7px;background:#0e1c25;margin:0 8px}
+.route .rfill{position:absolute;left:0;top:0;bottom:0;border-radius:7px;background:linear-gradient(90deg,#2fbf6a,#ffcf4a)}
+.route .rbar i{position:absolute;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:#3a5566}
+.route .rbar i.on{background:#fff}
+.route .rme{position:absolute;top:-16px;transform:translateX(-50%);font-size:20px}
+.ups-h{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:14px;color:#ffcf4a;margin:12px 2px 6px}
+.ups-h b{color:#fff}
+.ups{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.up{background:var(--panel2);border-radius:14px;padding:10px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px}
+.up .ui{font-size:28px;line-height:1}
+.up .un{font-weight:800;font-size:14px}
+.up .uv{font-size:12px;color:#9db4c2}
+.up .uv b{color:#ffcf4a}
+.up .btn{width:100%;padding:8px}
+.cons{display:flex;flex-wrap:wrap;gap:6px}
+.qrow{font-size:13.5px;padding:3px 2px}
+.qrow b{color:#ffcf4a}
 .summary{background:#203a2c;border:1px solid #2f6b48;border-radius:12px;padding:9px 11px;font-size:13.5px;margin-bottom:10px;line-height:1.4}
 
 /* Экраны */
@@ -191,7 +223,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 
 <div id="chapterBanner" style="opacity:0"><div class="k"></div><div class="t"></div></div>
 <div id="floaters"></div>
-<div id="oreTip" class="off"><div class="ud"><span class="a">⬆️</span><span>💎</span><span>🟡</span><span class="b">⬇️</span></div><div class="t"><b>Сверни с коридора — там сокровища!</b>Копай вверх и вниз: в породе прячутся железо, медь, золото и алмазы. Довези их на базу: железо и медь идут на постройку тоннеля, остальное продаётся.<span class="flow">Добыча → база → монеты → улучшения бура и бака</span></div></div>
+<div id="oreTip" class="off"><div class="ud"><span class="a">⬆️</span><span>💎</span><span>🟡</span><span class="b">⬇️</span></div><div class="t"><b>Бонус: вверху и внизу — сокровища!</b>Главное — копай вправо до Аляски. А если свернёшь вверх или вниз, найдёшь руду и алмазы: на базе они сами станут монетами.<span class="flow">💎 → 🪙 → ⛏ бур мощнее</span></div></div>
 <div id="toast" class="off"></div>
 
 <!-- Титульный экран -->
@@ -217,8 +249,8 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 <div id="dialog" class="hidden"><div class="dl"><img alt=""><div class="bub"><small></small><span></span><i class="tap">нажми, чтобы продолжить ›</i></div></div></div>
 <div id="finale" class="screen hidden" style="background:#0b1620"><canvas id="finc"></canvas><div class="body" id="finBody" style="padding:12px 14px calc(var(--sab) + 16px);overflow:auto;flex:1;touch-action:pan-y"></div></div>
 
-<script src="config.js?v=6"></script>
+<script src="config.js?v=8"></script>
 <script src="shop-links.js?v=7"></script>
-<script src="game.js?v=7"></script>
+<script src="game.js?v=8"></script>
 </body>
 </html>
