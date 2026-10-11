@@ -468,6 +468,14 @@ def pct(a, b):
 
 @dp.message(Command("stats"), is_admin)
 async def stats(m: Message):
+    try:
+        await _stats(m)
+    except Exception as e:
+        log.exception("stats")
+        await m.answer(f"⚠️ Не удалось собрать статистику: {type(e).__name__}: {str(e)[:200]}")
+
+
+async def _stats(m: Message):
     flush()
     now = time.time()
     h1, d1, d2 = now - 3600, now - 86400, now - 2 * 86400
