@@ -362,6 +362,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 @keyframes tri{0%{opacity:0;transform:scale(.1) rotate(-30deg)}30%{opacity:1;transform:scale(1.25) rotate(8deg)}55%{transform:scale(1) rotate(0)}85%{opacity:1;transform:scale(1.05)}100%{opacity:0;transform:scale(1.4)}}
 @keyframes trc{0%{opacity:1;transform:translateY(0) rotate(0)}100%{opacity:.9;transform:translateY(110vh) rotate(720deg)}}
 @keyframes trf{0%{opacity:0;transform:scale(.2)}40%{opacity:1;transform:scale(1.1)}100%{opacity:0;transform:scale(1.3)}}
+#bugText{width:100%;box-sizing:border-box;background:#0f1d27;color:var(--text);border:1px solid #3a5566;border-radius:12px;padding:10px;font:inherit;font-size:15px;resize:vertical}
 </style>
 </head>
 <body>
@@ -430,7 +431,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 <div id="dialog" class="hidden"><div class="dl"><img alt=""><div class="bub"><small></small><span></span><i class="tap">нажми, чтобы продолжить ›</i></div></div></div>
 <div id="finale" class="screen hidden" style="background:#0b1620"><canvas id="finc"></canvas><div class="body" id="finBody" style="padding:12px 14px calc(var(--sab) + 16px);overflow:auto;flex:1;touch-action:pan-y"></div></div>
 
-<script>window.GAME_V = 26;</script>
+<script>window.GAME_V = 27;</script>
 <script>
 /* Язык: выбранный в настройках, иначе язык Telegram (русский для RU/СНГ, английский для остальных) */
 (function () {

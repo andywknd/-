@@ -9,6 +9,20 @@ const inTG = !!(tg && tg.initData);
 const BOT = 'digtunnelbot';
 const APP_LINK = 'https://t.me/' + BOT + '/play';
 const $ = id => document.getElementById(id);
+
+// ---------- Автоотчёт об ошибках: любая ошибка JS уходит на сервер, бот сообщает админам ----------
+const ERR_SENT = new Set(), LAST_ERRS = [];
+function reportErr(m, st) {
+  try {
+    m = String(m || '').slice(0, 300); if (!m || /^Script error/i.test(m)) return;
+    LAST_ERRS.push(m.slice(0, 120)); if (LAST_ERRS.length > 5) LAST_ERRS.shift();
+    if (ERR_SENT.has(m) || ERR_SENT.size >= 8 || !window.DIG_API) return; ERR_SENT.add(m);
+    const body = JSON.stringify({ m, s: String(st || '').slice(0, 1500), v: window.GAME_V, l: window.LANG, p: tg ? tg.platform : 'web', b: typeof S !== 'undefined' && S ? S.built : '' });
+    fetch(window.DIG_API + '/err', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body, keepalive: true }).catch(() => {});
+  } catch (e) {}
+}
+window.addEventListener('error', e => reportErr(e.message, e.error && e.error.stack || (e.filename + ':' + e.lineno)));
+window.addEventListener('unhandledrejection', e => { const r = e.reason || {}; reportErr('Promise: ' + (r.message || r), r.stack); });
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const rnd = (a, b) => a + Math.random() * (b - a);
 
@@ -316,7 +330,7 @@ function drawIc(n, x, y, size) {
   if (!ok(im)) return; const w = size, h = size * im.naturalHeight / im.naturalWidth;
   cx.drawImage(im, x - w / 2, y - h / 2, w, h);
 }
-const EMO = { '🧭': 'trmap', '🌊': 'pump', '🪙': 'coin', '💰': 'coin', '⛽': 'fuel', '📦': 'cargo', '🎒': 'cargo', '🌡': 'heat', '🛡': 'hull', '🪨': 'iron', '🟠': 'copper', '🟡': 'gold',
+const EMO = { '🐞': 'repair', '🧭': 'trmap', '🌊': 'pump', '🪙': 'coin', '💰': 'coin', '⛽': 'fuel', '📦': 'cargo', '🎒': 'cargo', '🌡': 'heat', '🛡': 'hull', '🪨': 'iron', '🟠': 'copper', '🟡': 'gold',
   '💎': 'diamond', '✨': 'diamond', '💗': 'pinkgem', '🏁': 'flag', '🎯': 'flag', '🏔': 'mountain', '👥': 'friends', '🙂': 'friends', '🎁': 'gift', '🎟': 'ticket',
   '📨': 'envelope', '⚙': 'gear', '🏠': 'home', '🚨': 'siren', '⭐': 'star', '🔧': 'repair', '❄': 'coolant', '🚰': 'pump', '🧰': 'container', '📍': 'pin', '☁': 'gas',
   '🦣': 'mammoth', '🛢': 'oil', '📄': 'doc', '📋': 'doc', '⛏': 'pickaxe', '👆': 'hand', '🏆': 'trophy', '📣': 'megaphone', '📲': 'megaphone', '⚡': 'bolt',
@@ -1550,6 +1564,7 @@ $('menuBtn').addEventListener('click', () => {
     ${F.shop ? '<button class="btn sec2 wide" id="m-shop">⭐ Billionaire\'s shop</button>' : ''}
     ${collOpen() ? '<button class="btn sec2 wide" id="m-coll">💎 Collection & achievements</button>' : ''}
     <button class="btn sec2 wide" id="m-set">⚙️ Settings</button>
+    <button class="btn sec2 wide" id="m-bug">🐞 Report a bug</button>
     <button class="btn sec2 wide" id="m-sos"><img class="mi" src="assets/i/evac.webp" alt="">Stuck? Evacuation</button>
     <button class="btn sec2 wide" id="m-title"><img class="mi" src="assets/i/home.webp" alt="">Main screen</button>`);
   $('m-share').onclick = () => openShare();
@@ -1557,6 +1572,7 @@ $('menuBtn').addEventListener('click', () => {
   if ($('m-shop')) $('m-shop').onclick = () => openShop();
   if ($('m-coll')) $('m-coll').onclick = () => openCollection();
   $('m-set').onclick = () => openSettings();
+  $('m-bug').onclick = () => openBugReport();
   $('m-sos').onclick = () => { closeSheet(); if (atBase >= 0) return toast('You\'re already at the base'); evacuate('sos'); };
   $('m-title').onclick = () => { closeSheet(); save(true); showTitle(); };
 });
@@ -1571,6 +1587,23 @@ function openCollection() {
   h += `<div class="sec"><h3><span>🏆 Achievements</span><span>${S.ach.length}/${Object.keys(C.ACH).length}</span></h3>` +
     Object.entries(C.ACH).map(([k, a]) => `<div class="row"><span class="grow">${S.ach.indexOf(k) >= 0 ? '🏆 <b>' + a.name + '</b>' : '🔒 ' + a.name}<div class="sub">${a.desc}</div></span></div>`).join('') + `</div>`;
   openSheet('Collection', h);
+}
+function openBugReport() {
+  openSheet('Report a bug', `<div class="sec"><div style="font-size:13.5px;line-height:1.45;margin-bottom:8px">What went wrong? Briefly describe what you were doing and what happened. The game developers will get your message right away.</div>
+    <textarea id="bugText" maxlength="2000" rows="5"></textarea></div>
+    <button class="btn wide" id="bugSend">📨 Send</button>
+    <p style="font-size:11.5px;color:#9db4c2">Along with the text we send the game version, section number and device type — no personal data.</p>`);
+  $('bugText').placeholder = 'For example: on section 3 the rig got stuck and won\'t move';
+  $('bugSend').onclick = () => {
+    const text = ($('bugText').value || '').trim();
+    if (text.length < 3) { toast('Write at least a couple of words'); return; }
+    if (!inTG || !window.DIG_API) { toast('Sending works inside Telegram'); return; }
+    const ctx = { v: window.GAME_V, lang: window.LANG, platform: tg.platform, tg: tg.version, built: S.built, x: M.x, y: M.y, coins: Math.floor(S.coins), up: Object.values(S.up).join(''), screen: innerWidth + 'x' + innerHeight, errors: LAST_ERRS.join(' | ') || '—' };
+    $('bugSend').disabled = true;
+    fetch(window.DIG_API + '/report', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ init: tg.initData, text, ctx }) })
+      .then(r => { if (r.ok) { closeSheet(); toast('Thanks! Your message was sent to the developers'); track('bug_report'); } else { $('bugSend').disabled = false; toast(r.status === 429 ? 'Please wait a minute before sending another message' : 'Couldn\'t send, please try later'); } })
+      .catch(() => { $('bugSend').disabled = false; toast('No connection to the server, please try later'); });
+  };
 }
 function openSettings() {
   const t = (k, name) => `<label class="toggle"><span>${name}</span><input type="checkbox" data-set="${k}" ${S.set[k] ? 'checked' : ''}></label>`;

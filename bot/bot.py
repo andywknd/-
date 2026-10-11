@@ -16,6 +16,9 @@ import logging
 import os
 import sqlite3
 import time
+import shutil
+import html as _html
+import aiohttp
 from pathlib import Path
 from urllib.parse import parse_qsl
 
@@ -87,6 +90,8 @@ CREATE TABLE IF NOT EXISTS events(t REAL, uid INTEGER, ev TEXT, d TEXT);
 CREATE INDEX IF NOT EXISTS ev_t ON events(t);
 CREATE INDEX IF NOT EXISTS ev_ev ON events(ev);
 CREATE INDEX IF NOT EXISTS pl_last ON players(last);
+CREATE TABLE IF NOT EXISTS errors(sig TEXT PRIMARY KEY, msg TEXT, stack TEXT, ver TEXT, first REAL, last REAL, n INTEGER DEFAULT 1, users INTEGER DEFAULT 1);
+CREATE TABLE IF NOT EXISTS reports(t REAL, uid INTEGER, name TEXT, text TEXT, ctx TEXT);
 CREATE TABLE IF NOT EXISTS segtimes(seg INTEGER, uid INTEGER, t REAL, PRIMARY KEY(seg, uid));
 CREATE INDEX IF NOT EXISTS seg_t ON segtimes(seg, t);
 CREATE TABLE IF NOT EXISTS purchases(charge TEXT PRIMARY KEY, uid INTEGER, item TEXT, stars INTEGER, t REAL, refunded INTEGER DEFAULT 0);
@@ -164,7 +169,7 @@ def flush():
             db.execute(f"UPDATE players SET {', '.join(sets)} WHERE uid=?", vals)
         db.execute("COMMIT")
     except Exception as e:
-        log.warning("flush: %s", e)
+        log.error("flush: запись статистики не удалась: %s", e)
         try:
             db.execute("ROLLBACK")
         except Exception:
@@ -320,12 +325,196 @@ async def api_health(req):
     return web.json_response({"ok": True, "buffer": len(EV_BUF)})
 
 
+# ---------- Мониторинг и уведомления админам ----------
+ALERT_LAST: dict[str, float] = {}
+ALERT_Q: list[str] = []
+STARTED_AT = time.time()
+
+
+def esc(t) -> str:
+    return _html.escape(str(t))
+
+
+def alert(key: str, text: str, every: int = 1800):
+    """Поставить уведомление админам в очередь; одинаковые — не чаще раза в every секунд."""
+    now = time.time()
+    if now - ALERT_LAST.get(key, 0) < every:
+        return
+    ALERT_LAST[key] = now
+    if len(ALERT_Q) < 50:
+        ALERT_Q.append(text)
+
+
+class AlertHandler(logging.Handler):
+    """Любая ошибка в логах бота (исключения, сбои записи, сеть) — уведомление админам."""
+    def emit(self, rec):
+        if rec.levelno < logging.ERROR:
+            return
+        try:
+            msg = self.format(rec)
+        except Exception:
+            msg = str(rec.msg)
+        alert(f"log:{rec.name}:{str(rec.msg)[:60]}", f"🔴 <b>Ошибка на сервере</b> ({esc(rec.name)})\n<code>{esc(msg[-1500:])}</code>")
+
+
+_ah = AlertHandler()
+_ah.setFormatter(logging.Formatter("%(message)s"))
+logging.getLogger().addHandler(_ah)
+
+
+async def alerter():
+    while True:
+        await asyncio.sleep(4)
+        while ALERT_Q:
+            t = ALERT_Q.pop(0)
+            for a in ADMINS:
+                try:
+                    await bot.send_message(a, t, parse_mode="HTML", disable_web_page_preview=True)
+                except Exception:
+                    pass
+                await asyncio.sleep(0.05)
+
+
+async def run_checks(full: bool = False) -> list[tuple[bool, str]]:
+    """Проверки сервера. Возвращает [(ok, текст)]."""
+    res = []
+    du = shutil.disk_usage("/")
+    free = du.free / du.total * 100
+    res.append((free > 10, f"Диск: свободно {du.free // 2**30} ГБ ({free:.0f}%)"))
+    try:
+        mem = {l.split(":")[0]: int(l.split()[1]) for l in open("/proc/meminfo") if l.split()}
+        avail = mem.get("MemAvailable", 0) // 1024
+        res.append((avail > 150, f"Память: доступно {avail} МБ из {mem.get('MemTotal', 0) // 1024}"))
+    except Exception:
+        pass
+    la = os.getloadavg()[0]
+    cpu = os.cpu_count() or 1
+    res.append((la < cpu * 2.5, f"Нагрузка CPU: {la:.2f} (ядер: {cpu})"))
+    try:
+        db.execute("SELECT 1").fetchone()
+        size = (BASE / "stats.db").stat().st_size // 2**20
+        res.append((True, f"База: в порядке, {size} МБ, в буфере {len(EV_BUF)} событий"))
+    except Exception as e:
+        res.append((False, f"База: ошибка {e}"))
+    timeout = aiohttp.ClientTimeout(total=8)
+    async with aiohttp.ClientSession(timeout=timeout) as s:
+        async def get(url):
+            try:
+                async with s.get(url) as r:
+                    return r.status
+            except Exception as e:
+                return type(e).__name__
+        st = await get(f"http://127.0.0.1:{API_PORT}/api/health")
+        res.append((st == 200, f"Статистика (внутри): {st}"))
+        if API_URL and full or API_URL and int(time.time() / 60) % 5 == 0:
+            st = await get(API_URL + "/health")
+            res.append((st == 200, f"Статистика через HTTPS: {st}"))
+        if full or int(time.time() / 60) % 10 == 0:
+            st = await get(GAME_URL + "version.json")
+            res.append((st == 200, f"Сайт игры (GitHub Pages): {st}"))
+    if full or int(time.time() / 60) % 5 == 0:
+        try:
+            await bot.get_me()
+            res.append((True, "Telegram API: доступен"))
+        except Exception as e:
+            res.append((False, f"Telegram API: {type(e).__name__}"))
+    since = time.time() - 600
+    errs = db.execute("SELECT COALESCE(SUM(n),0) FROM errors WHERE last>?", (since,)).fetchone()[0]
+    res.append((errs < 50, f"Ошибок в игре за 10 мин: {errs}"))
+    return res
+
+
+async def watchdog():
+    await asyncio.sleep(20)
+    while True:
+        try:
+            for ok, txt in await run_checks():
+                if not ok:
+                    alert("chk:" + txt.split(":")[0], f"⚠️ <b>Проблема на сервере</b>\n{esc(txt)}\nПодробнее: /health")
+        except Exception as e:
+            log.error("watchdog: %s", e)
+        await asyncio.sleep(60)
+
+
+ERR_IP: dict[str, list] = {}
+
+
+async def api_err(req: web.Request):
+    """Ошибки из игры (window.onerror): копим по сигнатуре, о новой — сразу сообщаем админам."""
+    if req.method == "OPTIONS":
+        return cors(web.Response(status=204))
+    ip = req.headers.get("X-Forwarded-For", req.remote or "").split(",")[0].strip()
+    now = time.time()
+    lst = [t for t in ERR_IP.get(ip, []) if now - t < 60]
+    if len(lst) >= 10:
+        return cors(web.Response(status=429))
+    lst.append(now); ERR_IP[ip] = lst
+    try:
+        b = json.loads(await req.text())
+        msg = str(b.get("m", ""))[:300]; stack = str(b.get("s", ""))[:1500]; ver = str(b.get("v", ""))[:10]
+    except Exception:
+        return cors(web.Response(status=400))
+    if not msg:
+        return cors(web.Response(status=400))
+    first_line = next((l.strip() for l in stack.split("\n") if ".js" in l), "")
+    sig = hashlib.sha1((msg + "|" + first_line.split("?")[0][-80:]).encode()).hexdigest()[:16]
+    row = db.execute("SELECT n FROM errors WHERE sig=?", (sig,)).fetchone()
+    if row:
+        db.execute("UPDATE errors SET n=n+1, last=?, ver=? WHERE sig=?", (now, ver, sig))
+        if row[0] + 1 in (10, 100, 1000):
+            alert("errn:" + sig, f"🐞 Ошибка в игре повторилась уже <b>{row[0] + 1}</b> раз:\n<code>{esc(msg)}</code>\nСписок: /errors", 60)
+    else:
+        db.execute("INSERT INTO errors(sig, msg, stack, ver, first, last) VALUES(?,?,?,?,?,?)", (sig, msg, stack, ver, now, now))
+        ctx = f"v{esc(ver)} · {esc(str(b.get('p', ''))[:20])} · {esc(str(b.get('l', ''))[:4])} · участок {esc(str(b.get('b', ''))[:3])}"
+        alert("err:" + sig, f"🐞 <b>Новая ошибка в игре</b>\n<code>{esc(msg)}</code>\n{ctx}\n<code>{esc(first_line[:200])}</code>", 60)
+    return cors(web.json_response({"ok": True}))
+
+
+LAST_REP: dict[int, float] = {}
+
+
+async def api_report(req: web.Request):
+    """Кнопка «Сообщить об ошибке» в меню игры — текст уходит админам бота."""
+    if req.method == "OPTIONS":
+        return cors(web.Response(status=204))
+    try:
+        b = json.loads(await req.text())
+    except Exception:
+        return cors(web.Response(status=400))
+    user = check_init(b.get("init", ""))
+    if not user:
+        return cors(web.Response(status=403))
+    uid = int(user["id"])
+    now = time.time()
+    if now - LAST_REP.get(uid, 0) < 45:
+        return cors(web.Response(status=429))
+    LAST_REP[uid] = now
+    text = str(b.get("text", "")).strip()[:2000]
+    if len(text) < 3:
+        return cors(web.Response(status=400))
+    ctx = b.get("ctx") or {}
+    ctx_s = " · ".join(f"{k}: {str(v)[:60]}" for k, v in list(ctx.items())[:12])
+    name = (user.get("first_name", "") + " " + user.get("last_name", "")).strip()
+    uname = user.get("username")
+    db.execute("INSERT INTO reports(t, uid, name, text, ctx) VALUES(?,?,?,?,?)", (now, uid, name, text, ctx_s[:1000]))
+    who = f'<a href="tg://user?id={uid}">{esc(name or uid)}</a>' + (f" @{esc(uname)}" if uname else "") + f" (id {uid})"
+    msg = f"📝 <b>Сообщение об ошибке</b> от {who}\n\n{esc(text)}\n\n<i>{esc(ctx_s)}</i>"
+    for a in ADMINS:
+        try:
+            await bot.send_message(a, msg, parse_mode="HTML")
+        except Exception as e:
+            log.warning("report to admin: %s", e)
+    return cors(web.json_response({"ok": True}))
+
+
 async def start_api():
     app = web.Application(client_max_size=32 * 1024)
     app.router.add_route("*", "/api/e", api_events)
     app.router.add_get("/api/health", api_health)
     app.router.add_route("*", "/api/me", api_me)
     app.router.add_route("*", "/api/seg", api_seg)
+    app.router.add_route("*", "/api/err", api_err)
+    app.router.add_route("*", "/api/report", api_report)
     runner = web.AppRunner(app, access_log=None)
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", API_PORT, backlog=2048).start()
@@ -766,7 +955,28 @@ async def admin_help(m: Message):
         "/stats — полная статистика\n/export — все игроки в CSV\n"
         "/broadcast — рассылка по игрокам\n/stopbroadcast — остановить рассылку\n"
         "/preview — показать пост для канала\n/post @канал — опубликовать пост\n"
-        "/links — ссылки на оплату для лавки\n/refund id charge — вернуть звёзды")
+        "/links — ссылки на оплату для лавки\n/refund id charge — вернуть звёзды\n"
+        "/health — проверка сервера\n/errors — ошибки в игре и сообщения игроков")
+
+
+@dp.message(Command("health"), is_admin)
+async def health_cmd(m: Message):
+    res = await run_checks(full=True)
+    up = int(time.time() - STARTED_AT)
+    lines = [("✅ " if ok else "❌ ") + esc(t) for ok, t in res]
+    await m.answer("🩺 <b>Состояние сервера</b>\n" + "\n".join(lines) + f"\n⏱ Бот работает: {up // 3600} ч {up % 3600 // 60} мин", parse_mode="HTML")
+
+
+@dp.message(Command("errors"), is_admin)
+async def errors_cmd(m: Message):
+    rows = db.execute("SELECT msg, n, ver, last FROM errors ORDER BY last DESC LIMIT 10").fetchall()
+    if not rows:
+        await m.answer("🐞 Ошибок в игре пока нет.")
+        return
+    txt = "🐞 <b>Последние ошибки в игре</b>\n\n" + "\n\n".join(
+        f"• <code>{esc(msg[:160])}</code>\n  {n} раз, v{esc(ver)}, {time.strftime('%d.%m %H:%M', time.localtime(last))}" for msg, n, ver, last in rows)
+    reps = db.execute("SELECT COUNT(*) FROM reports").fetchone()[0]
+    await m.answer(txt + f"\n\n📝 Сообщений от игроков всего: {reps}", parse_mode="HTML")
 
 
 @dp.message()
@@ -778,12 +988,15 @@ async def other(m: Message):
 async def main():
     await start_api()
     asyncio.create_task(flusher())
+    asyncio.create_task(alerter())
+    asyncio.create_task(watchdog())
     try:
         await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="Играть", web_app=WebAppInfo(url=GAME_URL)))
     except Exception as e:
         log.warning("menu button: %s", e)
     me = await bot.get_me()
     log.info("bot @%s started, game %s", me.username, GAME_URL)
+    alert("start", "✅ Бот запущен (или перезапущен). Проверка сервера: /health", 60)
     try:
         await dp.start_polling(bot, allowed_updates=["message", "inline_query", "chosen_inline_result",
                                                      "pre_checkout_query", "callback_query"])
