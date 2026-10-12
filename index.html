@@ -345,6 +345,19 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .btn .mi{height:26px;width:auto;vertical-align:middle;margin:-6px 8px -4px 0;filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))}
 .langsw{display:flex;gap:6px}
 .sheet.ontop{z-index:36}
+/* Обзор карты */
+#ovBtn{pointer-events:auto;width:48px;min-height:40px;border-radius:9px;background:rgba(8,18,26,.78);border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:3px 0 2px;color:#e8f2f7}
+#ovBtn img{height:22px;width:auto;display:block}
+#ovBtn span{font-size:9.5px;font-weight:800;line-height:1}
+body.ovm #ovBtn{border-color:#ffcf4a;background:rgba(60,48,10,.85)}
+#ov{position:fixed;inset:0;z-index:5;touch-action:none;cursor:grab}
+#ov .ovp{position:absolute;left:10px;right:10px;bottom:calc(var(--sab) + 14px);display:flex;gap:10px;align-items:center;background:rgba(8,18,26,.9);border:2px solid #ffcf4a;border-radius:14px;padding:9px 10px 9px 13px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+#ov .ovt{flex:1;min-width:0}
+#ov .ovt b{display:block;color:#ffcf4a;font-size:14px}
+#ov .ovt span{display:block;font-size:11.5px;color:#cfe0ea;line-height:1.3;margin-top:2px}
+#ov .btn{flex:none}
+body.ovm #controls,body.ovm #say,body.ovm #upNow,body.ovm #warnline{opacity:0;pointer-events:none}
+
 /* Сокровище собрано */
 #trfx{position:fixed;inset:0;z-index:39;pointer-events:none;overflow:hidden;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 45%,rgba(40,24,4,.55),rgba(3,8,12,.85))}
 #trfx .rays{position:absolute;left:50%;top:45%;width:220vmax;height:220vmax;margin:-110vmax 0 0 -110vmax;background:repeating-conic-gradient(rgba(255,214,90,.28) 0 9deg,rgba(255,214,90,0) 9deg 18deg);opacity:0}
@@ -397,6 +410,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 <body>
 <canvas id="game"></canvas>
 
+<div id="ov" class="hidden"><div class="ovp"><div class="ovt"><b>Обзор</b><span>Двигай карту пальцем. Красным — слишком твёрдо для твоего бура</span></div><button class="btn sm" id="ovClose">Назад к буровой</button></div></div>
 <div id="hud" class="hidden">
   <div id="hudrow">
     <div class="bar" id="b-fuel"><div class="lbl"><span>⛽ Топливо</span><b>0</b></div><div class="trk"><div class="fill" style="background:#ffb02e"></div></div></div>
@@ -408,6 +422,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
     <div class="chip" id="coins">🪙 0</div>
     <div id="strip"><canvas id="stripc"></canvas></div>
     <div class="chip" id="pct">0%</div>
+    <button id="ovBtn" aria-label="Обзор"><img src="assets/i/overview.webp" alt=""><span>Обзор</span></button>
     <button id="menuBtn" aria-label="Меню"><img src="assets/i/menu.webp" alt=""><span>Меню</span></button>
   </div>
   <div id="warnline"></div>
@@ -461,7 +476,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 <div id="dialog" class="hidden"><div class="dl"><img alt=""><div class="bub"><small></small><span></span><i class="tap">нажми, чтобы продолжить ›</i></div></div></div>
 <div id="finale" class="screen hidden" style="background:#0b1620"><canvas id="finc"></canvas><div class="body" id="finBody" style="padding:12px 14px calc(var(--sab) + 16px);overflow:auto;flex:1;touch-action:pan-y"></div></div>
 
-<script>window.GAME_V = 39;</script>
+<script>window.GAME_V = 40;</script>
 <script>
 /* Язык: выбранный в настройках, иначе язык Telegram (русский для RU/СНГ, английский для остальных) */
 (function () {
