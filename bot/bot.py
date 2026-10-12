@@ -376,6 +376,9 @@ async def api_sub(req: web.Request):
         st = getattr(st, "value", st)
         ok = st in ("member", "administrator", "creator") or (st == "restricted" and getattr(cm, "is_member", False))
     except Exception as e:
+        # Для канала Telegram отвечает так, если человек просто не подписан — это не ошибка
+        if any(x in str(e) for x in ("PARTICIPANT_ID_INVALID", "user not found", "USER_NOT_PARTICIPANT")):
+            return cors(web.json_response({"sub": False}))
         alert("sub_check", f"⚠️ Не получается проверить подписку на {esc(NEWS_CHANNEL)}: {esc(e)}\nДобавь бота администратором канала (без прав).", 3600)
         return cors(web.json_response({"sub": False, "err": "check"}))
     if ok:

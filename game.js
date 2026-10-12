@@ -13,6 +13,8 @@ const ERR_SENT = new Set(), LAST_ERRS = [];
 function reportErr(m, st) {
   try {
     m = String(m || '').slice(0, 300); if (!m || /^Script error/i.test(m)) return;
+    // штатные отказы Telegram (пользователь не дал разрешение и т.п.) — не ошибки игры
+    if (/permission denied|WebAppMethodUnsupported|WebAppPopupOpened|cancelled|canceled|AbortError/i.test(m)) return;
     LAST_ERRS.push(m.slice(0, 120)); if (LAST_ERRS.length > 5) LAST_ERRS.shift();
     if (ERR_SENT.has(m) || ERR_SENT.size >= 8 || !window.DIG_API) return; ERR_SENT.add(m);
     const body = JSON.stringify({ m, s: String(st || '').slice(0, 1500), v: window.GAME_V, l: window.LANG, p: tg ? tg.platform : 'web', b: typeof S !== 'undefined' && S ? S.built : '' });
