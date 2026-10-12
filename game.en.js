@@ -220,39 +220,79 @@ function serialize() {
   const o = Object.assign({}, S); o._dug = enc(dug); o._exp = enc(exp); o._rf = enc(rf); o.t = Date.now();
   return JSON.stringify(o);
 }
+// Несколько устройств: у каждой открытой копии игры свой SID. В облаке рядом с сохранением лежит,
+// кто и с каким прогрессом его записал (ep — номер кампании, p — наигранное время).
+// Копия, отставшая от облака, ничего туда не пишет, а подтягивает свежий прогресс.
+const SID = Math.random().toString(36).slice(2, 10);
+const cloudOK = () => inTG && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9');
+const progOf = o => o ? [o.ep || 0, (o.stats && o.stats.playTime) || o.p || 0] : [-1, 0];
+const ahead = (a, b) => a[0] !== b[0] ? a[0] > b[0] : a[1] > b[1] + 2; // a заметно впереди b
+let cloudBusy = false, syncing = false;
+function readCloud(cb, withData) {
+  let done = false; const fin = (m, d) => { if (!done) { done = true; cb(m, d); } };
+  setTimeout(() => fin(null, null), 3000);
+  try {
+    tg.CloudStorage.getItem('gmeta', (err, m) => {
+      let meta = null; try { meta = err || !m ? null : JSON.parse(m); } catch (e) {}
+      if (!meta || !withData) return fin(meta, null);
+      const keys = []; for (let i = 0; i < meta.n; i++) keys.push('g' + i);
+      tg.CloudStorage.getItems(keys, (e2, vals) => {
+        if (e2 || !vals) return fin(meta, null);
+        try { fin(meta, JSON.parse(keys.map(k => vals[k] || '').join(''))); } catch (e) { fin(meta, null); }
+      });
+    });
+  } catch (e) { fin(null, null); }
+}
+function writeCloud(str) {
+  const parts = []; for (let i = 0; i < str.length; i += 3800) parts.push(str.slice(i, i + 3800));
+  try {
+    parts.forEach((p, i) => tg.CloudStorage.setItem('g' + i, p, () => {}));
+    tg.CloudStorage.setItem('gmeta', JSON.stringify({ n: parts.length, t: Date.now(), sid: SID, ep: S.ep || 0, p: Math.floor(S.stats.playTime) }), () => {});
+  } catch (e) {}
+}
 function save(force) {
-  if (!S) return;
+  if (!S || syncing) return;
   const now = performance.now();
   if (!force && (!dirty || now - lastSave < 10000)) return;
   lastSave = now; dirty = false;
   const str = serialize();
   try { localStorage.setItem('dig_save', str); } catch (e) {}
-  if (inTG && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
-    const parts = []; for (let i = 0; i < str.length; i += 3800) parts.push(str.slice(i, i + 3800));
-    try {
-      parts.forEach((p, i) => tg.CloudStorage.setItem('g' + i, p, () => {}));
-      tg.CloudStorage.setItem('gmeta', JSON.stringify({ n: parts.length, t: Date.now() }), () => {});
-    } catch (e) {}
-  }
+  if (!cloudOK() || cloudBusy) return;
+  // перед записью смотрим, не ушла ли вперёд другая копия игры (телефон/компьютер)
+  cloudBusy = true;
+  readCloud(meta => {
+    cloudBusy = false;
+    if (meta && meta.sid && meta.sid !== SID && ahead(progOf(meta), progOf(S))) return pullCloud();
+    writeCloud(serialize());
+  });
+}
+// Подтянуть более свежий прогресс с другого устройства прямо в открытую игру
+function pullCloud(quiet) {
+  if (!cloudOK() || syncing) return;
+  syncing = true;
+  readCloud((meta, cloud) => {
+    syncing = false;
+    if (!cloud || cloud.v !== 1 || !S || !ahead(progOf(cloud), progOf(S))) return;
+    leak = null; collapses = []; loadState(cloud); M.st = 'idle';
+    try { localStorage.setItem('dig_save', JSON.stringify(cloud)); } catch (e) {}
+    ['sheet', 'modal', 'dialog', 'finale'].forEach(id => { const el = $(id); if (el) el.classList.add('hidden'); });
+    camX = M.x * TS - VW / 2; camY = M.y * TS - VH / 2;
+    if ($('title').classList.contains('hidden')) paused = false;
+    if (!quiet) toast('Progress synced from your other device');
+    track('sync_pull');
+  }, true);
 }
 function loadAll(cb) {
   let local = null;
   try { const s = localStorage.getItem('dig_save'); if (s) local = JSON.parse(s); } catch (e) {}
-  if (!(inTG && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9'))) return cb(local);
-  let done = false; const fin = v => { if (!done) { done = true; cb(v); } };
-  setTimeout(() => fin(local), 2500);
-  try {
-    tg.CloudStorage.getItem('gmeta', (err, m) => {
-      if (err || !m) return fin(local);
-      let meta; try { meta = JSON.parse(m); } catch (e) { return fin(local); }
-      if (local && local.t >= meta.t) return fin(local);
-      const keys = []; for (let i = 0; i < meta.n; i++) keys.push('g' + i);
-      tg.CloudStorage.getItems(keys, (e2, vals) => {
-        if (e2 || !vals) return fin(local);
-        try { const cloud = JSON.parse(keys.map(k => vals[k] || '').join('')); fin(cloud && (!local || cloud.t > local.t) ? cloud : local); } catch (e) { fin(local); }
-      });
-    });
-  } catch (e) { fin(local); }
+  if (!cloudOK()) return cb(local);
+  // выбираем копию с бо́льшим прогрессом, а не просто последнюю записанную
+  readCloud((meta, cloud) => {
+    if (!cloud) return cb(local);
+    if (!local) return cb(cloud);
+    const a = progOf(cloud), b = progOf(local);
+    cb(a[0] !== b[0] ? (a[0] > b[0] ? cloud : local) : a[1] !== b[1] ? (a[1] > b[1] ? cloud : local) : (cloud.t > local.t ? cloud : local));
+  }, true);
 }
 
 // ---------- Аналитика ----------
@@ -1917,7 +1957,7 @@ $('sheetX').addEventListener('click', () => { if (!$('title').classList.contains
 
 function newCampaign() {
   // покупки из лавки, легендарный бур, друзья и коллекция переходят в новую кампанию
-  const keep = S ? { coll: S.coll, ach: S.ach, set: S.set, completions: S.completions, shop: S.shop, legend: S.legend, refs: S.refs, buys: S.buys } : {};
+  const keep = S ? { coll: S.coll, ach: S.ach, set: S.set, completions: S.completions, shop: S.shop, legend: S.legend, refs: S.refs, buys: S.buys, ep: (S.ep || 0) + 1 } : {};
   S = Object.assign(defaultState(), keep); S.tut.intro = false;
   setGeo(GEO_CUR); generate(S.seed); computeDist(); teleport(0); reveal(M.x, M.y, 3);
   $('finale').classList.add('hidden'); $('sheet').classList.add('hidden'); $('modal').classList.add('hidden');
@@ -1943,7 +1983,7 @@ function loop(now) {
 // Свернули приложение — тихая пауза; вернулись — игра продолжается сама (без всплывающих окон)
 let autoPaused = false;
 function onHide() { save(true); track('hide'); sendEvents(true); if (S && !paused) { paused = true; autoPaused = true; } joyId = null; joyDir = null; for (const k in keys) keys[k] = 0; }
-function onShow() { if (nmPending) setTimeout(() => nmCheck(false), 700); if (autoPaused) { autoPaused = false; const uiOpen = !$('sheet').classList.contains('hidden') || !$('dialog').classList.contains('hidden') || !$('modal').classList.contains('hidden') || !$('title').classList.contains('hidden'); if (!uiOpen) paused = false; } lastT = performance.now(); }
+function onShow() { if (S) pullCloud(); if (nmPending) setTimeout(() => nmCheck(false), 700); if (autoPaused) { autoPaused = false; const uiOpen = !$('sheet').classList.contains('hidden') || !$('dialog').classList.contains('hidden') || !$('modal').classList.contains('hidden') || !$('title').classList.contains('hidden'); if (!uiOpen) paused = false; } lastT = performance.now(); }
 document.addEventListener('visibilitychange', () => { if (document.hidden) onHide(); else onShow(); });
 if (inTG && tg.onEvent) { try { tg.onEvent('deactivated', onHide); tg.onEvent('activated', onShow); } catch (e) {} }
 window.addEventListener('pagehide', () => save(true));
@@ -1963,6 +2003,10 @@ function checkVersion() {
 setTimeout(checkVersion, 800);
 
 // ---------- Старт ----------
+function loadState(saved) {
+  S = Object.assign(defaultState(), saved); if (!saved.wv) delete S.wv; if (saved.segT0 === undefined) S.segT0 = S.stats.playTime; S.drops = (S.drops || []).filter(d => d.t >= 4); applyStateToMap(); M.x = S.x; M.y = S.y; M.rx = M.x; M.ry = M.y; const k = idx(M.x, M.y); atBase = isOpenBase(k) ? baseAt[k] : -1; run = atBase < 0 ? { fuel0: S.fuel, maxHeat: 0, away: 0 } : null; try { updGap(); } catch (e) {}
+  reveal(M.x, M.y, 3);
+}
 function boot() {
   if (inTG) {
     try {
@@ -1974,7 +2018,7 @@ function boot() {
   }
   resize();
   loadAll(saved => {
-    if (saved && saved.v === 1) { S = Object.assign(defaultState(), saved); if (!saved.wv) delete S.wv; if (saved.segT0 === undefined) S.segT0 = S.stats.playTime; S.drops = (S.drops || []).filter(d => d.t >= 4); applyStateToMap(); M.x = S.x; M.y = S.y; M.rx = M.x; M.ry = M.y; const k = idx(M.x, M.y); atBase = isOpenBase(k) ? baseAt[k] : -1; if (atBase < 0) run = { fuel0: S.fuel, maxHeat: 0, away: 0 }; try { updGap(); } catch (e) {} }
+    if (saved && saved.v === 1) loadState(saved);
     else { S = defaultState(); setGeo(GEO_CUR); generate(S.seed); computeDist(); teleport(0); }
     reveal(M.x, M.y, 3);
     camX = M.x * TS - VW / 2; camY = M.y * TS - VH / 2;
